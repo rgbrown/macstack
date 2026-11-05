@@ -1,0 +1,214 @@
+<?xml version='1.0' encoding='utf-8'?>
+<quiz>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course</text>
+    </category>
+    <info format="html">
+      <text/>
+    </info>
+    <idnumber/>
+  </question>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course/Calculus</text>
+    </category>
+    <info format="html">
+      <text><![CDATA[Calculus showcase questions]]></text>
+    </info>
+    <idnumber>calculus</idnumber>
+  </question>
+  <question type="stack">
+    <name>
+      <text>Classify Stationary Point Using Second Derivative</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>Consider the function:</p>
+\[ f(x) = {@f_expr@} \]
+<p>The derivative is \(f'(x) = {@f_prime@}\), which satisfies \(f'({@x0@}) = 0\), so \(x = {@x0@}\) is a stationary point.</p>
+<p>Classify the nature of the stationary point at \(x = {@x0@}\):</p>
+<p>[[input:ans1]] [[validation:ans1]]</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text><![CDATA[<p>Compute the second derivative of \(f(x)\):</p>
+\[ f''(x) = {@f_double_prime@} \]
+<p>Evaluating at \(x = {@x0@}\):</p>
+\[ f''({@x0@}) = {@f2_at_x0@} \]
+<p>Because \(f''({@x0@})\) is {@d2_reason@}, the stationary point is classified as a <strong>{@ans_label@}</strong>.</p>]]></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.1000000</penalty>
+    <hidden>0</hidden>
+    <idnumber>demo-stationary-point-radio</idnumber>
+    <stackversion>
+      <text>2025102100</text>
+    </stackversion>
+    <questionvariables>
+      <text><![CDATA[/* Stationary point classification */
+x0: rand([-2, -1, 1, 2, 3]);
+scenario: rand([1, 2, 3]);
+c_const: rand([-5, -3, 1, 4, 7]);
+
+f_expr: if scenario = 1 then expand((x - x0)^3/3 + (x - x0)^2 + c_const)
+        else (if scenario = 2 then expand(-(x - x0)^3/3 - (x - x0)^2 + c_const)
+        else expand((x - x0)^3/3 + c_const));
+
+ans_label: if scenario = 1 then "Local minimum"
+           else (if scenario = 2 then "Local maximum"
+           else "Point of inflection");
+
+d2_reason: if scenario = 1 then "positive (f''(x_0) > 0)"
+           else (if scenario = 2 then "negative (f''(x_0) < 0)"
+           else "zero (f''(x_0) = 0)");
+
+correct_val: scenario;
+wrong_val: if scenario = 1 then 2 else 1;
+
+f_prime: diff(f_expr, x);
+f_double_prime: diff(f_prime, x);
+f2_at_x0: ev(f_double_prime, x = x0);
+
+/* Model answer for radio input widget */
+ta1: [
+  [1, is(correct_val = 1), "Local minimum"],
+  [2, is(correct_val = 2), "Local maximum"],
+  [3, is(correct_val = 3), "Point of inflection (second derivative test inconclusive)"]
+];
+]]></text>
+    </questionvariables>
+    <specificfeedback format="html">
+      <text><![CDATA[[[feedback:prt1]]]]></text>
+    </specificfeedback>
+    <questionnote format="html">
+      <text><![CDATA[{@scenario@}, {@x0@}, {@f_expr@}]]></text>
+    </questionnote>
+    <questiondescription format="html">
+      <text/>
+    </questiondescription>
+    <questionsimplify>1</questionsimplify>
+    <assumepositive>0</assumepositive>
+    <assumereal>0</assumereal>
+    <prtcorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-check"></i> Correct answer, well done.</p>]]></text>
+    </prtcorrect>
+    <prtpartiallycorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-adjust"></i> Your answer is partially correct.</p>]]></text>
+    </prtpartiallycorrect>
+    <prtincorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-times"></i> Incorrect answer.</p>]]></text>
+    </prtincorrect>
+    <decimals>.</decimals>
+    <scientificnotation>*10</scientificnotation>
+    <multiplicationsign>onum</multiplicationsign>
+    <sqrtsign>1</sqrtsign>
+    <complexno>i</complexno>
+    <inversetrig>cos-1</inversetrig>
+    <logicsymbol>lang</logicsymbol>
+    <matrixparens>[</matrixparens>
+    <variantsselectionseed/>
+    <isbroken>0</isbroken>
+    <input>
+      <name>ans1</name>
+      <type>radio</type>
+      <tans>ta1</tans>
+      <boxsize>15</boxsize>
+      <strictsyntax>1</strictsyntax>
+      <insertstars>0</insertstars>
+      <syntaxhint/>
+      <syntaxattribute>0</syntaxattribute>
+      <forbidwords/>
+      <allowwords/>
+      <forbidfloat>1</forbidfloat>
+      <requirelowestterms>0</requirelowestterms>
+      <checkanswertype>0</checkanswertype>
+      <mustverify>1</mustverify>
+      <showvalidation>1</showvalidation>
+      <options/>
+    </input>
+    <prt>
+      <name>prt1</name>
+      <node>
+        <name>0</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>correct_val</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>1.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-0-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Correct! You classified the stationary point accurately using the second derivative test.</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>-1</falsenextnode>
+        <falseanswernote>prt1-0-F</falseanswernote>
+        <falsefeedback format="html">
+          <text><![CDATA[<p>Incorrect. Compute \(f''(x)\) and evaluate it at \(x = {@x0@}\) to determine its classification.</p>]]></text>
+        </falsefeedback>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+      </node>
+      <value>1.0000000</value>
+      <autosimplify>1</autosimplify>
+      <feedbackstyle>1</feedbackstyle>
+      <feedbackvariables>
+        <text/>
+      </feedbackvariables>
+    </prt>
+    <deployedseed>1</deployedseed>
+    <deployedseed>2</deployedseed>
+    <deployedseed>3</deployedseed>
+    <deployedseed>4</deployedseed>
+    <deployedseed>5</deployedseed>
+    <deployedseed>6</deployedseed>
+    <deployedseed>7</deployedseed>
+    <deployedseed>8</deployedseed>
+    <deployedseed>9</deployedseed>
+    <deployedseed>10</deployedseed>
+    <deployedseed>11</deployedseed>
+    <deployedseed>12</deployedseed>
+    <deployedseed>13</deployedseed>
+    <deployedseed>14</deployedseed>
+    <deployedseed>15</deployedseed>
+    <deployedseed>16</deployedseed>
+    <deployedseed>17</deployedseed>
+    <deployedseed>18</deployedseed>
+    <deployedseed>19</deployedseed>
+    <deployedseed>20</deployedseed>
+    <qtest>
+      <testcase>1</testcase>
+      <description>Correct Classification</description>
+      <testinput>
+        <name>ans1</name>
+        <value>correct_val</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>1.0000000</expectedscore>
+        <expectedpenalty>0.0000000</expectedpenalty>
+        <expectedanswernote>prt1-0-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>2</testcase>
+      <description>Incorrect Classification</description>
+      <testinput>
+        <name>ans1</name>
+        <value>wrong_val</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-0-F</expectedanswernote>
+      </expected>
+    </qtest>
+    <hint format="html">
+      <text><![CDATA[<p>Evaluate \(f''(x)\) at \(x = {@x0@}\). If \(f''(x) > 0\), it is a local minimum; if \(f''(x) < 0\), a local maximum; if \(f''(x) = 0\), the test is inconclusive.</p>]]></text>
+    </hint>
+  </question>
+</quiz>

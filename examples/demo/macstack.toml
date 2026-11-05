@@ -1,0 +1,56 @@
+stack_version = "2025102100"
+root_category = "$course$/top/Demo Course"
+questions_dir = "questions"
+
+[defaults]
+defaultgrade = "1.0000000"
+penalty = "0.1000000"
+hidden = "0"
+questionsimplify = "1"
+assumepositive = "0"
+assumereal = "0"
+prtcorrect = '<p><i class="fa fa-check"></i> Correct answer, well done.</p>'
+prtpartiallycorrect = '<p><i class="fa fa-adjust"></i> Your answer is partially correct.</p>'
+prtincorrect = '<p><i class="fa fa-times"></i> Incorrect answer.</p>'
+decimals = "."
+scientificnotation = "*10"
+multiplicationsign = "onum"
+sqrtsign = "1"
+complexno = "i"
+inversetrig = "cos-1"
+logicsymbol = "lang"
+matrixparens = "["
+
+[input_defaults]
+type = "algebraic"
+boxsize = "15"
+strictsyntax = "1"
+insertstars = "0"
+syntaxhint = ""
+syntaxattribute = "0"
+forbidwords = ""
+allowwords = ""
+forbidfloat = "1"
+requirelowestterms = "0"
+checkanswertype = "0"
+mustverify = "1"
+showvalidation = "1"
+options = ""
+
+[prt_defaults]
+value = "1.0000000"
+autosimplify = "1"
+feedbackstyle = "1"
+feedbackvariables = ""
+
+[categories.algebra]
+idnumber = "algebra"
+path = "$course$/top/Demo Course/Algebra"
+folder = "algebra"
+info = "Algebra showcase questions"
+
+[categories.calculus]
+idnumber = "calculus"
+path = "$course$/top/Demo Course/Calculus"
+folder = "calculus"
+info = "Calculus showcase questions"

@@ -1,0 +1,246 @@
+<?xml version='1.0' encoding='utf-8'?>
+<quiz>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course</text>
+    </category>
+    <info format="html">
+      <text/>
+    </info>
+    <idnumber/>
+  </question>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course/Algebra</text>
+    </category>
+    <info format="html">
+      <text><![CDATA[Algebra showcase questions]]></text>
+    </info>
+    <idnumber>algebra</idnumber>
+  </question>
+  <question type="stack">
+    <name>
+      <text>Linear System as Column Vector</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>Solve the following system of linear equations for \(x\) and \(y\):</p>
+\[ \begin{aligned}
+{@eq1@} \\
+{@eq2@}
+\end{aligned} \]
+<p>Enter your solution as a column vector \(\mathbf{x} = \begin{bmatrix} x \\ y \end{bmatrix}\):</p>
+<p>[[input:ans1]] [[validation:ans1]]</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text><![CDATA[<p>The system in matrix form is \(A\mathbf{x} = \mathbf{b}\):</p>
+\[ \begin{bmatrix} {@a11@} & {@a12@} \\ {@a21@} & {@a22@} \end{bmatrix} \begin{bmatrix} x \\ y \end{bmatrix} = \begin{bmatrix} {@b1@} \\ {@b2@} \end{bmatrix} \]
+<p>Solving via elimination or matrix inverse gives:</p>
+\[ x = {@xs@}, \quad y = {@ys@} \]
+<p>In vector form:</p>
+\[ \mathbf{x} = \begin{bmatrix} {@xs@} \\ {@ys@} \end{bmatrix} \]]]></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.1000000</penalty>
+    <hidden>0</hidden>
+    <idnumber>demo-linear-system-matrix</idnumber>
+    <stackversion>
+      <text>2025102100</text>
+    </stackversion>
+    <questionvariables>
+      <text><![CDATA[/* 2x2 linear system with integer solution */
+xs: rand([1, 2, 3, 4, 5, 6]);
+ys: rand([-6, -5, -4, -3, -2, -1]);
+
+a11: rand([2, 3]);
+a12: rand([1, 2]);
+a21: rand([1, 2]);
+a22: rand([3, 4]);
+
+A: matrix([a11, a12], [a21, a22]);
+X: matrix([xs], [ys]);
+B: A . X;
+b1: B[1, 1];
+b2: B[2, 1];
+
+ta1: X;
+ans_swapped: matrix([ys], [xs]);
+
+eq1: a11*x + a12*y = b1;
+eq2: a21*x + a22*y = b2;
+]]></text>
+    </questionvariables>
+    <specificfeedback format="html">
+      <text><![CDATA[[[feedback:prt1]]]]></text>
+    </specificfeedback>
+    <questionnote format="html">
+      <text><![CDATA[{@ta1@}]]></text>
+    </questionnote>
+    <questiondescription format="html">
+      <text/>
+    </questiondescription>
+    <questionsimplify>1</questionsimplify>
+    <assumepositive>0</assumepositive>
+    <assumereal>0</assumereal>
+    <prtcorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-check"></i> Correct answer, well done.</p>]]></text>
+    </prtcorrect>
+    <prtpartiallycorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-adjust"></i> Your answer is partially correct.</p>]]></text>
+    </prtpartiallycorrect>
+    <prtincorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-times"></i> Incorrect answer.</p>]]></text>
+    </prtincorrect>
+    <decimals>.</decimals>
+    <scientificnotation>*10</scientificnotation>
+    <multiplicationsign>onum</multiplicationsign>
+    <sqrtsign>1</sqrtsign>
+    <complexno>i</complexno>
+    <inversetrig>cos-1</inversetrig>
+    <logicsymbol>lang</logicsymbol>
+    <matrixparens>[</matrixparens>
+    <variantsselectionseed/>
+    <isbroken>0</isbroken>
+    <input>
+      <name>ans1</name>
+      <type>matrix</type>
+      <tans>ta1</tans>
+      <boxsize>15</boxsize>
+      <strictsyntax>1</strictsyntax>
+      <insertstars>0</insertstars>
+      <syntaxhint/>
+      <syntaxattribute>0</syntaxattribute>
+      <forbidwords/>
+      <allowwords/>
+      <forbidfloat>1</forbidfloat>
+      <requirelowestterms>0</requirelowestterms>
+      <checkanswertype>0</checkanswertype>
+      <mustverify>1</mustverify>
+      <showvalidation>1</showvalidation>
+      <options/>
+    </input>
+    <prt>
+      <name>prt1</name>
+      <node>
+        <name>0</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ta1</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>1.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-0-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Correct! You successfully solved the system and formatted the column vector.</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>1</falsenextnode>
+        <falseanswernote>prt1-0-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <node>
+        <name>1</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ans_swapped</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>0.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-1-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>You have swapped the coordinates. The top component is \(x\) and the bottom component is \(y\).</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>-1</falsenextnode>
+        <falseanswernote>prt1-1-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <value>1.0000000</value>
+      <autosimplify>1</autosimplify>
+      <feedbackstyle>1</feedbackstyle>
+      <feedbackvariables>
+        <text/>
+      </feedbackvariables>
+    </prt>
+    <deployedseed>1</deployedseed>
+    <deployedseed>2</deployedseed>
+    <deployedseed>3</deployedseed>
+    <deployedseed>4</deployedseed>
+    <deployedseed>5</deployedseed>
+    <deployedseed>6</deployedseed>
+    <deployedseed>7</deployedseed>
+    <deployedseed>9</deployedseed>
+    <deployedseed>10</deployedseed>
+    <deployedseed>11</deployedseed>
+    <deployedseed>12</deployedseed>
+    <deployedseed>14</deployedseed>
+    <deployedseed>16</deployedseed>
+    <deployedseed>18</deployedseed>
+    <deployedseed>19</deployedseed>
+    <deployedseed>20</deployedseed>
+    <deployedseed>23</deployedseed>
+    <deployedseed>24</deployedseed>
+    <deployedseed>25</deployedseed>
+    <deployedseed>26</deployedseed>
+    <qtest>
+      <testcase>1</testcase>
+      <description>Model Answer</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ta1</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>1.0000000</expectedscore>
+        <expectedpenalty>0.0000000</expectedpenalty>
+        <expectedanswernote>prt1-0-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>2</testcase>
+      <description>Swapped Coordinates</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ans_swapped</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-1-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>3</testcase>
+      <description>Zero Vector</description>
+      <testinput>
+        <name>ans1</name>
+        <value>matrix([0],[0])</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-1-F</expectedanswernote>
+      </expected>
+    </qtest>
+    <hint format="html">
+      <text><![CDATA[<p>Solve by Gaussian elimination or substitution, and place \(x\) in the top cell and \(y\) in the bottom cell.</p>]]></text>
+    </hint>
+  </question>
+</quiz>

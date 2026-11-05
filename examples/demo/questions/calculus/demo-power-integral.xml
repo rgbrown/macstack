@@ -1,0 +1,233 @@
+<?xml version='1.0' encoding='utf-8'?>
+<quiz>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course</text>
+    </category>
+    <info format="html">
+      <text/>
+    </info>
+    <idnumber/>
+  </question>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course/Calculus</text>
+    </category>
+    <info format="html">
+      <text><![CDATA[Calculus showcase questions]]></text>
+    </info>
+    <idnumber>calculus</idnumber>
+  </question>
+  <question type="stack">
+    <name>
+      <text>Indefinite Integral of a Polynomial</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>Evaluate the indefinite integral:</p>
+\[ \int \left( {@integrand@} \right) \, dx \]
+<p><em>Use \(c\) for the constant of integration.</em></p>
+<p>[[input:ans1]] [[validation:ans1]]</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text><![CDATA[<p>Apply the power rule for integration term by term:</p>
+\[ \int x^k \, dx = \frac{x^{k+1}}{k+1} + c \quad (k \neq -1) \]
+<p>For the given integrand:</p>
+\[ \int \left( {@integrand@} \right) \, dx = {@a@} \cdot \frac{x^{{@n+1@}}}{{@n+1@}} + {@b@} \cdot \frac{x^2}{2} + c \]
+\[ = {@ta1@} \]]]></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.1000000</penalty>
+    <hidden>0</hidden>
+    <idnumber>demo-power-integral</idnumber>
+    <stackversion>
+      <text>2025102100</text>
+    </stackversion>
+    <questionvariables>
+      <text><![CDATA[/* Indefinite integral using the power rule */
+a: rand([2, 3, 4, 5, 6]);
+b: rand([2, 4, 6, 8]);
+n: rand([2, 3, 4]);
+
+integrand: a*x^n + b*x;
+ta1: a*x^(n+1)/(n+1) + (b/2)*x^2 + c;
+
+/* Common misconceptions */
+ans_diff: diff(integrand, x);
+ans_no_c: a*x^(n+1)/(n+1) + (b/2)*x^2;
+]]></text>
+    </questionvariables>
+    <specificfeedback format="html">
+      <text><![CDATA[[[feedback:prt1]]]]></text>
+    </specificfeedback>
+    <questionnote format="html">
+      <text><![CDATA[{@ta1@}]]></text>
+    </questionnote>
+    <questiondescription format="html">
+      <text/>
+    </questiondescription>
+    <questionsimplify>1</questionsimplify>
+    <assumepositive>0</assumepositive>
+    <assumereal>0</assumereal>
+    <prtcorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-check"></i> Correct answer, well done.</p>]]></text>
+    </prtcorrect>
+    <prtpartiallycorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-adjust"></i> Your answer is partially correct.</p>]]></text>
+    </prtpartiallycorrect>
+    <prtincorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-times"></i> Incorrect answer.</p>]]></text>
+    </prtincorrect>
+    <decimals>.</decimals>
+    <scientificnotation>*10</scientificnotation>
+    <multiplicationsign>onum</multiplicationsign>
+    <sqrtsign>1</sqrtsign>
+    <complexno>i</complexno>
+    <inversetrig>cos-1</inversetrig>
+    <logicsymbol>lang</logicsymbol>
+    <matrixparens>[</matrixparens>
+    <variantsselectionseed/>
+    <isbroken>0</isbroken>
+    <input>
+      <name>ans1</name>
+      <type>algebraic</type>
+      <tans>ta1</tans>
+      <boxsize>15</boxsize>
+      <strictsyntax>1</strictsyntax>
+      <insertstars>0</insertstars>
+      <syntaxhint/>
+      <syntaxattribute>0</syntaxattribute>
+      <forbidwords/>
+      <allowwords/>
+      <forbidfloat>1</forbidfloat>
+      <requirelowestterms>0</requirelowestterms>
+      <checkanswertype>0</checkanswertype>
+      <mustverify>1</mustverify>
+      <showvalidation>1</showvalidation>
+      <options/>
+    </input>
+    <prt>
+      <name>prt1</name>
+      <node>
+        <name>0</name>
+        <answertest>Int</answertest>
+        <sans>ans1</sans>
+        <tans>ta1</tans>
+        <testoptions>x</testoptions>
+        <truescoremode>=</truescoremode>
+        <truescore>1.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-0-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Correct! You correctly applied the power rule and included the constant of integration.</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>1</falsenextnode>
+        <falseanswernote>prt1-0-F</falseanswernote>
+        <description/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <node>
+        <name>1</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ans_diff</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>0.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-1-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>It appears you differentiated the integrand rather than integrating it. Remember that \(\int x^n \, dx = \frac{x^{n+1}}{n+1} + c\).</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>-1</falsenextnode>
+        <falseanswernote>prt1-1-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <value>1.0000000</value>
+      <autosimplify>1</autosimplify>
+      <feedbackstyle>1</feedbackstyle>
+      <feedbackvariables>
+        <text/>
+      </feedbackvariables>
+    </prt>
+    <deployedseed>1</deployedseed>
+    <deployedseed>2</deployedseed>
+    <deployedseed>3</deployedseed>
+    <deployedseed>4</deployedseed>
+    <deployedseed>5</deployedseed>
+    <deployedseed>6</deployedseed>
+    <deployedseed>7</deployedseed>
+    <deployedseed>8</deployedseed>
+    <deployedseed>9</deployedseed>
+    <deployedseed>10</deployedseed>
+    <deployedseed>11</deployedseed>
+    <deployedseed>12</deployedseed>
+    <deployedseed>13</deployedseed>
+    <deployedseed>16</deployedseed>
+    <deployedseed>17</deployedseed>
+    <deployedseed>20</deployedseed>
+    <deployedseed>21</deployedseed>
+    <deployedseed>22</deployedseed>
+    <deployedseed>24</deployedseed>
+    <deployedseed>25</deployedseed>
+    <qtest>
+      <testcase>1</testcase>
+      <description>Model Answer</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ta1</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>1.0000000</expectedscore>
+        <expectedpenalty>0.0000000</expectedpenalty>
+        <expectedanswernote>prt1-0-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>2</testcase>
+      <description>Differentiated Integrand</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ans_diff</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-1-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>3</testcase>
+      <description>Missing Constant of Integration</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ans_no_c</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-1-F</expectedanswernote>
+      </expected>
+    </qtest>
+    <hint format="html">
+      <text><![CDATA[<p>Integrate each power term using \(\int x^n \, dx = \frac{x^{n+1}}{n+1}\) and don't forget to add \(+ c\).</p>]]></text>
+    </hint>
+  </question>
+</quiz>

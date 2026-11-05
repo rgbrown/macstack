@@ -1,0 +1,284 @@
+<?xml version='1.0' encoding='utf-8'?>
+<quiz>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course</text>
+    </category>
+    <info format="html">
+      <text/>
+    </info>
+    <idnumber/>
+  </question>
+  <question type="category">
+    <category>
+      <text>$course$/top/Demo Course/Algebra</text>
+    </category>
+    <info format="html">
+      <text><![CDATA[Algebra showcase questions]]></text>
+    </info>
+    <idnumber>algebra</idnumber>
+  </question>
+  <question type="stack">
+    <name>
+      <text>Identify Quadratic Function from Graph</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>The graph of a quadratic function \(f(x)\) is shown below:</p>
+<p>{@plot(f_x, [x, xmin, xmax], [y, -10, 10])@}</p>
+<p>The vertex of the parabola is at \(({@vx@}, {@vy@})\), and the curve passes through the point \(({@px@}, {@py@})\).</p>
+<p>Find the algebraic formula for \(f(x)\):</p>
+<p>\(f(x) =\) [[input:ans1]] [[validation:ans1]]</p>]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text><![CDATA[<p>The vertex of the parabola is \((h, k) = ({@vx@}, {@vy@})\). In vertex form:</p>
+\[ f(x) = a(x - {@vx@})^2 + {@vy@} \]
+<p>Substitute the point \(({@px@}, {@py@})\) to determine \(a\):</p>
+\[ {@py@} = a({@px@} - {@vx@})^2 + {@vy@} \]
+\[ {@py@} = a(1)^2 + {@vy@} \implies a = {@a@} \]
+<p>Hence the formula is:</p>
+\[ f(x) = {@f_x@} \]]]></text>
+    </generalfeedback>
+    <defaultgrade>1.0000000</defaultgrade>
+    <penalty>0.1000000</penalty>
+    <hidden>0</hidden>
+    <idnumber>demo-quadratic-graph</idnumber>
+    <stackversion>
+      <text>2025102100</text>
+    </stackversion>
+    <questionvariables>
+      <text><![CDATA[/* Quadratic in vertex form: f(x) = a*(x - h)^2 + k */
+a: rand([2, -2, 3]);
+h: rand([-3, -2, -1, 1, 2, 3]);
+k: rand([-4, -3, -2, 2, 3, 4]);
+
+f_x: a*(x - h)^2 + k;
+ta1: f_x;
+
+/* Misconception expressions */
+ans_no_a: (x - h)^2 + k;
+ans_sign_flip: a*(x + h)^2 + k;
+
+/* Key coordinates */
+vx: h;
+vy: k;
+px: h + 1;
+py: ev(f_x, x = px);
+
+xmin: h - 4;
+xmax: h + 4;
+]]></text>
+    </questionvariables>
+    <specificfeedback format="html">
+      <text><![CDATA[[[feedback:prt1]]]]></text>
+    </specificfeedback>
+    <questionnote format="html">
+      <text><![CDATA[{@f_x@}]]></text>
+    </questionnote>
+    <questiondescription format="html">
+      <text/>
+    </questiondescription>
+    <questionsimplify>1</questionsimplify>
+    <assumepositive>0</assumepositive>
+    <assumereal>0</assumereal>
+    <prtcorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-check"></i> Correct answer, well done.</p>]]></text>
+    </prtcorrect>
+    <prtpartiallycorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-adjust"></i> Your answer is partially correct.</p>]]></text>
+    </prtpartiallycorrect>
+    <prtincorrect format="html">
+      <text><![CDATA[<p><i class="fa fa-times"></i> Incorrect answer.</p>]]></text>
+    </prtincorrect>
+    <decimals>.</decimals>
+    <scientificnotation>*10</scientificnotation>
+    <multiplicationsign>onum</multiplicationsign>
+    <sqrtsign>1</sqrtsign>
+    <complexno>i</complexno>
+    <inversetrig>cos-1</inversetrig>
+    <logicsymbol>lang</logicsymbol>
+    <matrixparens>[</matrixparens>
+    <variantsselectionseed/>
+    <isbroken>0</isbroken>
+    <input>
+      <name>ans1</name>
+      <type>algebraic</type>
+      <tans>ta1</tans>
+      <boxsize>15</boxsize>
+      <strictsyntax>1</strictsyntax>
+      <insertstars>0</insertstars>
+      <syntaxhint/>
+      <syntaxattribute>0</syntaxattribute>
+      <forbidwords/>
+      <allowwords/>
+      <forbidfloat>1</forbidfloat>
+      <requirelowestterms>0</requirelowestterms>
+      <checkanswertype>0</checkanswertype>
+      <mustverify>1</mustverify>
+      <showvalidation>1</showvalidation>
+      <options/>
+    </input>
+    <prt>
+      <name>prt1</name>
+      <node>
+        <name>0</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ta1</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>1.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-0-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Correct! You identified the vertex and vertical scaling factor accurately.</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>1</falsenextnode>
+        <falseanswernote>prt1-0-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <node>
+        <name>1</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ans_no_a</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>0.5</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-1-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Your vertex \((h, k)\) is correct, but you forgot the vertical stretch factor \(a\). Substitute the point \(({@px@}, {@py@})\) to solve for \(a\).</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>2</falsenextnode>
+        <falseanswernote>prt1-1-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <node>
+        <name>2</name>
+        <answertest>AlgEquiv</answertest>
+        <sans>ans1</sans>
+        <tans>ans_sign_flip</tans>
+        <truescoremode>=</truescoremode>
+        <truescore>0.0</truescore>
+        <truenextnode>-1</truenextnode>
+        <trueanswernote>prt1-2-T</trueanswernote>
+        <truefeedback format="html">
+          <text><![CDATA[<p>Check the horizontal shift: shifting right by \(h\) corresponds to \((x - h)^2\), not \((x + h)^2\).</p>]]></text>
+        </truefeedback>
+        <falsescoremode>=</falsescoremode>
+        <falsescore>0.0</falsescore>
+        <falsenextnode>-1</falsenextnode>
+        <falseanswernote>prt1-2-F</falseanswernote>
+        <description/>
+        <testoptions/>
+        <quiet>0</quiet>
+        <truepenalty/>
+        <falsepenalty/>
+        <falsefeedback format="html">
+          <text/>
+        </falsefeedback>
+      </node>
+      <value>1.0000000</value>
+      <autosimplify>1</autosimplify>
+      <feedbackstyle>1</feedbackstyle>
+      <feedbackvariables>
+        <text/>
+      </feedbackvariables>
+    </prt>
+    <deployedseed>1</deployedseed>
+    <deployedseed>2</deployedseed>
+    <deployedseed>3</deployedseed>
+    <deployedseed>4</deployedseed>
+    <deployedseed>5</deployedseed>
+    <deployedseed>6</deployedseed>
+    <deployedseed>7</deployedseed>
+    <deployedseed>8</deployedseed>
+    <deployedseed>9</deployedseed>
+    <deployedseed>10</deployedseed>
+    <deployedseed>11</deployedseed>
+    <deployedseed>12</deployedseed>
+    <deployedseed>13</deployedseed>
+    <deployedseed>14</deployedseed>
+    <deployedseed>16</deployedseed>
+    <deployedseed>18</deployedseed>
+    <deployedseed>19</deployedseed>
+    <deployedseed>20</deployedseed>
+    <deployedseed>22</deployedseed>
+    <deployedseed>23</deployedseed>
+    <qtest>
+      <testcase>1</testcase>
+      <description>Model Answer</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ta1</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>1.0000000</expectedscore>
+        <expectedpenalty>0.0000000</expectedpenalty>
+        <expectedanswernote>prt1-0-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>2</testcase>
+      <description>Forgot Vertical Scale Factor a</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ans_no_a</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.5000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-1-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>3</testcase>
+      <description>Horizontal Sign Flip</description>
+      <testinput>
+        <name>ans1</name>
+        <value>ans_sign_flip</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-2-T</expectedanswernote>
+      </expected>
+    </qtest>
+    <qtest>
+      <testcase>4</testcase>
+      <description>Unrelated Quadratic</description>
+      <testinput>
+        <name>ans1</name>
+        <value>x^2</value>
+      </testinput>
+      <expected>
+        <name>prt1</name>
+        <expectedscore>0.0000000</expectedscore>
+        <expectedpenalty>0.1000000</expectedpenalty>
+        <expectedanswernote>prt1-2-F</expectedanswernote>
+      </expected>
+    </qtest>
+    <hint format="html">
+      <text><![CDATA[<p>Use the vertex form \(f(x) = a(x - h)^2 + k\) and solve for \(a\) using the second given point.</p>]]></text>
+    </hint>
+  </question>
+</quiz>
