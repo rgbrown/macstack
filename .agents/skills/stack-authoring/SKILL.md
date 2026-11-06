@@ -128,7 +128,30 @@ macstack format questions/w01/w01-add-fractions.xml
 
 ---
 
-## 3. Fast Verification Loop
+## 3. Human-Readable Question Sketches (`macstack sketch` & `macstack apply`)
+
+While STACK XML remains the canonical source of truth for repository storage and automated workflows, AI pair programmers should leverage the `.stack.md` sketch format when collaborating with human authors:
+
+- **Presenting Questions for Human Review or Showing Diffs**:
+  Use `macstack sketch` to produce a concise, Markdown-shaped view of a question. Because it hides XML boilerplate and course defaults (~30 lines vs ~230 lines of XML), it is ideal for reviewing question structure, explaining PRT logic, or presenting clean before/after diffs in chat:
+  ```bash
+  macstack sketch questions/w01/w01-add-fractions.xml
+  ```
+- **Applying User-Edited Sketches**:
+  When a user provides edits, new PRT branches, or whole question drafts in `.stack.md` format, apply them back to the canonical XML file using `macstack apply`:
+  ```bash
+  macstack apply question.stack.md questions/w01/w01-add-fractions.xml
+  ```
+  `apply` validates answer test names, branch targets, and input options before updating the XML, while preserving all categories, deployed seeds, and unmodelled XML elements.
+
+> **Note**: Always maintain XML-first fidelity. The XML file is the canonical source of truth; sketches are ephemeral authoring and review views.
+
+For full format syntax, grammar rules, and the interactive `macstack edit` watch-session workflow, consult:
+[STACK Question Sketch Format Reference](./references/sketch-format.md)
+
+---
+
+## 4. Fast Verification Loop
 
 Run fast command-line checks without launching a browser:
 
@@ -151,7 +174,7 @@ macstack maxima questions/w01/w01-add-fractions.xml
 
 ---
 
-## 4. Mandatory Quality Gate
+## 5. Mandatory Quality Gate
 
 Before marking any STACK question complete, complete this 3-step quality checklist:
 
@@ -197,7 +220,7 @@ macstack test questions/w01/w01-add-fractions.xml --json
 
 ---
 
-## 5. Live-Reload Browser Preview
+## 6. Live-Reload Browser Preview
 
 Launch the visual workbench to test the authentic student and teacher experience:
 
@@ -215,7 +238,7 @@ Key workbench features:
 
 ---
 
-## 6. Packaging for Massey Stream / Moodle
+## 7. Packaging for Massey Stream / Moodle
 
 ### Single Question Import
 Because each XML file formatted by `macstack` includes its category path header, you can upload any single `.xml` directly to Moodle:
@@ -232,6 +255,7 @@ macstack bundle questions/w01/ -o dist/week-01-all-questions.xml
 
 ---
 
-## Reference Guide
+## Reference Guides
 For deep syntax rules on Maxima functions, `simp:false` patterns, CASText2 tokens, input types, and PRT answer tests, consult:
-[STACK XML and Maxima Reference Guide](./references/stack-xml-and-maxima-guide.md)
+- [STACK XML and Maxima Reference Guide](./references/stack-xml-and-maxima-guide.md)
+- [STACK Question Sketch Format Reference](./references/sketch-format.md)
