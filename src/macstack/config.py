@@ -76,6 +76,7 @@ class CourseConfig:
         "feedbackvariables": "",
     })
     categories: dict[str, CategorySpec] = field(default_factory=dict)
+    edit: dict[str, str] = field(default_factory=dict)
 
 
 def load_config(toml_path: Path) -> CourseConfig:
@@ -102,6 +103,9 @@ def load_config(toml_path: Path) -> CourseConfig:
     prt_defaults = dict(CourseConfig().prt_defaults)
     prt_defaults.update(data.get("prt_defaults", {}))
 
+    edit_raw = data.get("edit", {})
+    edit = {str(k): str(v) for k, v in edit_raw.items()} if isinstance(edit_raw, dict) else {}
+
     return CourseConfig(
         stack_version=str(data.get("stack_version", "2025102100")),
         root_category=str(data.get("root_category", "$course$/top/Inline questions")),
@@ -110,6 +114,7 @@ def load_config(toml_path: Path) -> CourseConfig:
         input_defaults=input_defaults,
         prt_defaults=prt_defaults,
         categories=categories,
+        edit=edit,
     )
 
 
@@ -127,6 +132,8 @@ def save_config(config: CourseConfig, toml_path: Path) -> None:
             for cat_id, cat_spec in config.categories.items()
         },
     }
+    if config.edit:
+        raw_dict["edit"] = config.edit
     toml_str = tomli_w.dumps(raw_dict)
     toml_path.parent.mkdir(parents=True, exist_ok=True)
     toml_path.write_text(toml_str, encoding="utf-8")

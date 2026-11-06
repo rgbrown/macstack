@@ -151,6 +151,13 @@ def _get_xml_root(xml_path_or_str: Path | str) -> tuple[etree._Element, Path | N
         return etree.fromstring(content, parser), None
 
 
+def find_stack_question(root: etree._Element) -> etree._Element | None:
+    """Return the first <question type="stack"> element in a parsed document (or the root itself)."""
+    if root.tag == "question" and root.get("type") == "stack":
+        return root
+    return root.find(".//question[@type='stack']")
+
+
 def _serialize_xml(root: etree._Element) -> str:
     """Serialize element to pretty-printed UTF-8 XML string with declaration."""
     etree.indent(root, space="  ")
@@ -170,9 +177,7 @@ def parse_question_summary(xml_path_or_str: Path | str) -> QuestionSummary:
     root, path = _get_xml_root(xml_path_or_str)
 
     # Find the stack question
-    q = root.find(".//question[@type='stack']")
-    if q is None and root.tag == "question" and root.get("type") == "stack":
-        q = root
+    q = find_stack_question(root)
 
     if q is None:
         raise ValueError("No <question type='stack'> element found in XML")
@@ -772,9 +777,7 @@ def prepare_for_api(xml_str: str, seed_override: int | None = None) -> tuple[str
 def set_deployed_seeds(xml_path: Path, seeds: list[int]) -> None:
     """Replace all <deployedseed> elements in a question XML file cleanly."""
     root, _ = _get_xml_root(xml_path)
-    q = root.find(".//question[@type='stack']")
-    if q is None and root.tag == "question" and root.get("type") == "stack":
-        q = root
+    q = find_stack_question(root)
 
     if q is None:
         raise ValueError("No <question type='stack'> found in XML")
@@ -807,9 +810,7 @@ def upsert_qtest(
 ) -> int:
     """Add or update a <qtest> element in xml_path. Returns the assigned testcase number."""
     root, _ = _get_xml_root(xml_path)
-    q = root.find(".//question[@type='stack']")
-    if q is None and root.tag == "question" and root.get("type") == "stack":
-        q = root
+    q = find_stack_question(root)
 
     if q is None:
         raise ValueError("No <question type='stack'> found in XML")

@@ -9,6 +9,7 @@ import sys
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
@@ -20,6 +21,7 @@ from macstack.config import (
     save_config,
     slugify,
 )
+from macstack.edit_session import EditSession
 from macstack.engine import StackEngine
 from macstack.linter import LintIssue, lint_question
 from macstack.preview_server import run_preview
@@ -28,6 +30,12 @@ from macstack.runtime import (
     doctor as run_doctor,
     setup_runtime,
     stop_php_server as do_stop_php_server,
+)
+from macstack.sketch import (
+    SketchError,
+    apply_sketch,
+    parse_sketch,
+    sketch_file,
 )
 from macstack.xml_codec import (
     bundle_bank,
@@ -212,12 +220,11 @@ def bundle(
     console.print(f"[green]Bundled {count} questions into {output}[/green]")
 
 
-@app.command()
-def new(
-    target: str = typer.Argument(..., help="Target question path or idnumber"),
-    name: str = typer.Option("", "--name", "-n", help="Human-readable question name"),
-    category: str = typer.Option("", "--category", "-c", help="Stream/Moodle category path"),
-) -> None:
+def scaffold_new_question(
+    target: str | Path,
+    name: str = "",
+    category: str = "",
+) -> Path:
     """Scaffold a new STACK question XML with full category headers and defaults."""
     target_path = Path(target)
     if not str(target).endswith(".xml"):
@@ -243,7 +250,106 @@ def new(
     target_path.write_text(xml_content, encoding="utf-8")
 
     format_question_file(target_path, config)
-    console.print(f"[green]Scaffolded question at {target_path}[/green]")
+    return target_path
+
+
+@app.command()
+def new(
+    target: str = typer.Argument(..., help="Target question path or idnumber"),
+    name: str = typer.Option("", "--name", "-n", help="Human-readable question name"),
+    category: str = typer.Option("", "--category", "-c", help="Stream/Moodle category path"),
+) -> None:
+    """Scaffold a new STACK question XML with full category headers and defaults."""
+    target_path = scaffold_new_question(target, name=name, category=category)
+    console.print(f"[green]Scaffolded question at {escape(str(target_path))}[/green]")
+
+
+@app.command()
+def edit(
+    target: Path = typer.Argument(..., help="Path to STACK question XML"),
+    editor: str | None = typer.Option(None, "--editor", "-e", help="Editor command to use"),
+    no_open: bool = typer.Option(False, "--no-open", help="Do not open an editor, just watch"),
+    name: str = typer.Option("", "--name", "-n", help="Question name if scaffolding a new file"),
+    category: str = typer.Option("", "--category", "-c", help="Category path if scaffolding a new file"),
+) -> None:
+    """Live-edit a STACK question via an ephemeral synced sketch file."""
+    target_path = target
+    if not str(target).endswith(".xml"):
+        target_path = Path(str(target) + ".xml")
+
+    if not target_path.exists():
+        target_path = scaffold_new_question(target_path, name=name, category=category)
+        console.print(f"[green]Scaffolded question at {escape(str(target_path))}[/green]")
+
+    config, toml_path = find_course_config(target_path.resolve())
+    course_root = toml_path.parent.resolve() if toml_path else target_path.resolve().parent
+
+    session = EditSession(
+        xml_path=target_path,
+        config=config,
+        course_root=course_root,
+        editor_cmd=editor,
+        open_editor=not no_open,
+        out=lambda msg: console.print(escape(str(msg))),
+        prompt=lambda msg: typer.prompt(msg, default="resume"),
+    )
+    try:
+        session.run()
+    except RuntimeError as e:
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
+
+
+@app.command()
+def sketch(
+    xml_path: Path = typer.Argument(..., help="Path to STACK question XML file"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Target output .stack.md file"),
+) -> None:
+    """Export a STACK question XML to a compact sketch (.stack.md)."""
+    if not xml_path.exists():
+        err_console.print(f"[red]File not found: {escape(str(xml_path))}[/red]")
+        raise typer.Exit(code=1)
+
+    config, _ = find_course_config(xml_path.resolve().parent)
+    text = sketch_file(xml_path, config=config)
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+    else:
+        typer.echo(text, nl=False)
+
+
+@app.command()
+def apply(
+    sketch_path: Path = typer.Argument(..., help="Path to sketch (.stack.md) file"),
+    xml_path: Path = typer.Argument(..., help="Path to target STACK question XML file"),
+) -> None:
+    """Apply a sketch file to a STACK question XML (created if missing)."""
+    if not sketch_path.exists():
+        err_console.print(f"[red]File not found: {escape(str(sketch_path))}[/red]")
+        raise typer.Exit(code=1)
+
+    sketch_text = sketch_path.read_text(encoding="utf-8")
+    try:
+        model = parse_sketch(sketch_text)
+    except SketchError as e:
+        typer.echo(f"{sketch_path}:{e.line}: {e.message}", err=True)
+        raise typer.Exit(code=1)
+
+    config, _ = find_course_config(xml_path.resolve().parent)
+    base = xml_path.read_text(encoding="utf-8") if xml_path.exists() else None
+    new_xml = apply_sketch(model, base, config, category_id=xml_path.parent.name)
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
+    xml_path.write_text(new_xml, encoding="utf-8")
+
+    issues = lint_question(xml_path)
+    errors = [i for i in issues if i.severity == "error"]
+    warnings = [i for i in issues if i.severity == "warning"]
+    console.print(
+        f"Applied {escape(str(sketch_path))} -> {escape(str(xml_path))} "
+        f"({len(errors)} error(s), {len(warnings)} warning(s))"
+    )
+    for err in errors:
+        console.print(f"  [red]error[/red]: {escape(err.code)}: {escape(err.message)}")
 
 
 @app.command()
