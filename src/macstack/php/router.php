@@ -1,5 +1,8 @@
 <?php
 // router.php - Router for PHP built-in server in macstack
+//
+// Copyright (C) 2026 Richard Brown
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 ini_set("max_execution_time", "300");
 ini_set("memory_limit", "512M");

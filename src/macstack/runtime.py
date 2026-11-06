@@ -1,3 +1,21 @@
+# Copyright (C) 2026 Richard Brown
+#
+# Portions of generate_maximalocal_mac, generate_php_config,
+# build_precompiled_image, and _patch_test_controller are adapted from
+# moodle-qtype_stack (https://github.com/maths/moodle-qtype_stack), specifically
+# stack/cas/installhelper.class.php, api/config_sample.txt, and
+# api/controller/TestController.php:
+#   Copyright (C) 2023 RWTH Aachen
+#   Copyright (C) 2024 University of Edinburgh and STACK contributors
+# Modified by Richard Brown (2026) for automated macOS local runtime setup and
+# multi-seed test reinitialization.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Native STACK Runtime manager for macOS.
 
 Handles cloning upstream moodle-qtype_stack, generating maximalocal.mac,

@@ -200,3 +200,22 @@ The repository includes a dedicated Antigravity agent skill located at:
 ```
 
 When pairing with an AI coding assistant, the agent automatically activates this skill to scaffold questions, design PRT branches with targeted feedback for common student misconceptions, deploy random seeds, and guarantee 100% test pass rates across all variants.
+
+---
+
+## License & Attribution
+
+Copyright (C) 2026 Richard Brown.
+
+**macstack** is free software, distributed under the terms of the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`). See [LICENSE](./LICENSE) for the full license text.
+
+### Upstream Attribution
+
+`macstack` interfaces with and includes adapted components from [STACK (`moodle-qtype_stack`)](https://github.com/maths/moodle-qtype_stack), originally developed by Chris Sangwin, the University of Edinburgh, RWTH Aachen, and the STACK community, and distributed under the GNU General Public License v3.0 or later:
+
+- `src/macstack/php/cli_helper.php` adapts grading logic from `api/controller/GradingController.php` (Copyright 2023 RWTH Aachen).
+- `src/macstack/runtime.py` adapts local CAS configuration, SBCL image compilation, and test-runner initialization snippets from `stack/cas/installhelper.class.php`, `api/config_sample.txt`, and `api/controller/TestController.php` (Copyright 2023 RWTH Aachen; Copyright 2024 University of Edinburgh).
+
+### Note on Authored Questions
+
+The GPLv3 license applies to the **macstack** software itself. Question banks and authoring files (`.xml` and `.stack.md`) that you create, edit, format, test, or bundle using `macstack` remain your own independent works and are **not** subject to `macstack`'s GPL license.
