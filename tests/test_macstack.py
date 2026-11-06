@@ -107,6 +107,20 @@ def test_demo_questions_render_grade_and_plots() -> None:
     ans_mat_model = _extract_model_answers(rend_mat.get("inputs", {}))
     res_mat = engine.grade(api_xml_mat, answers=ans_mat_model, seed=seed_mat)
     assert res_mat.get("score") == pytest.approx(1.0, abs=1e-4)
+    assert "prtresults" in res_mat and "prt1" in res_mat["prtresults"]
+    assert "prt1-0-T" in res_mat["prtresults"]["prt1"]["answernotes"]
+    assert len(res_mat["prtresults"]["prt1"]["trace"]) > 0
+
+    # Swapped coordinates -> score 0.0, node 1 trueanswernote prt1-1-T
+    res_swapped = engine.grade(
+        api_xml_mat,
+        answers={"ans1_sub_0_0": "-1", "ans1_sub_1_0": "2"},
+        seed=seed_mat,
+    )
+    assert res_swapped.get("score") == pytest.approx(0.0, abs=1e-4)
+    assert "prtresults" in res_swapped and "prt1" in res_swapped["prtresults"]
+    assert "prt1-1-T" in res_swapped["prtresults"]["prt1"]["answernotes"]
+    assert "prt1-0-F" in res_swapped["prtresults"]["prt1"]["answernotes"]
 
     # 4. demo-stationary-point-radio: multiple choice radio input
     radio_file = DEMO_DIR / "questions" / "calculus" / "demo-stationary-point-radio.xml"
@@ -320,6 +334,9 @@ def test_preview_server_endpoints() -> None:
         "answers": {"ans1": "3/4"},
     })
     assert r_grade.status_code == 200
+    grade_payload = r_grade.json()
+    assert "prtresults" in grade_payload
+    assert "isgradable" in grade_payload
 
     # 6. GET /plots/{filename} on question with plot
     plot_q_relpath = None

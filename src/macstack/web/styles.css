@@ -1210,6 +1210,38 @@ code, pre, .font-mono {
   color: var(--warning-text);
 }
 
+.prt-answernotes-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.prt-trace-details {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+}
+
+.prt-trace-details summary {
+  list-style: none;
+}
+
+.prt-trace-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.prt-trace-code {
+  background-color: var(--bg-surface-sunken);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* Diagnostics / Lint */
 .diagnostics-container {
   display: flex;

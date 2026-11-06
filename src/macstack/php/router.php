@@ -20,7 +20,7 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
 $uri = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
 
 // 1. Check custom macstack endpoints
-if ($uri === "/macstack/health" || $uri === "/macstack/vars" || $uri === "/macstack/seeds") {
+if ($uri === "/macstack/health" || $uri === "/macstack/vars" || $uri === "/macstack/seeds" || $uri === "/grade") {
     require_once __DIR__ . "/cli_helper.php";
     macstack_handle_request($uri);
     exit(0);

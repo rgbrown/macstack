@@ -15,9 +15,16 @@ require_once $qtypeStackDir . "/api/config.php";
 require_once $qtypeStackDir . "/api/vendor/autoload.php";
 require_once $qtypeStackDir . "/api/emulation/MoodleEmulation.php";
 require_once $qtypeStackDir . "/api/util/StackQuestionLoader.php";
+require_once $qtypeStackDir . "/api/util/StackIframeHolder.php";
+require_once $qtypeStackDir . "/api/dtos/StackGradingResponse.php";
+require_once $qtypeStackDir . "/api/util/StackPlotReplacer.php";
+require_once $qtypeStackDir . "/api/util/StackSeedHelper.php";
 require_once $qtypeStackDir . "/stack/cas/keyval.class.php";
 
 use api\util\StackQuestionLoader;
+use api\util\StackIframeHolder;
+use api\util\StackPlotReplacer;
+use api\util\StackSeedHelper;
 
 function macstack_handle_request($uri) {
     header("Content-Type: application/json; charset=UTF-8");
@@ -39,6 +46,8 @@ function macstack_handle_request($uri) {
         macstack_handle_vars($data);
     } else if ($uri === "/macstack/seeds") {
         macstack_handle_seeds($data);
+    } else if ($uri === "/grade") {
+        macstack_handle_grade($data);
     } else {
         http_response_code(404);
         echo json_encode(["error" => "Endpoint not found: $uri"]);
@@ -214,4 +223,197 @@ function macstack_handle_seeds(array $data) {
         "attempts" => $attempts
     ]);
     exit(0);
+}
+
+function macstack_standard_prt_feedback(\qtype_stack_question $question, \prt_evaluatable $result, $feedbackstyle) {
+    $class = '';
+    if ($result->get_score() < 0.000001) {
+        $class = 'incorrect';
+    } else if ($result->get_score() > 0.999999) {
+        $class = 'correct';
+    } else {
+        $class = 'partiallycorrect';
+    }
+
+    $field = 'prt' . $class . 'instantiated';
+
+    if ($feedbackstyle === 2 || $feedbackstyle === 3) {
+        $s = get_string('symbolicprt' . $class . 'feedback', 'qtype_stack');
+        return \html_writer::tag('span', $s, ['class' => $class]);
+    }
+
+    if ($question->$field) {
+        return \html_writer::tag('div',
+            \stack_maths::process_display_castext(
+                $question->$field->apply_placeholder_holder($question->$field->get_rendered($question->castextprocessor))
+            ),
+            ['class' => $class]
+        );
+    }
+
+    return '';
+}
+
+function macstack_handle_grade(array $data) {
+    $xml = $data["questionDefinition"] ?? "";
+    if (empty($xml)) {
+        http_response_code(400);
+        echo json_encode(["error" => "Missing questionDefinition"]);
+        exit(0);
+    }
+
+    try {
+        $loaded = StackQuestionLoader::loadxml($xml);
+        /** @var \qtype_stack_question $question */
+        $question = $loaded["question"];
+
+        $seed = isset($data["seed"]) && $data["seed"] !== null ? (int)$data["seed"] : null;
+        StackSeedHelper::initialize_seed($question, $seed);
+        $question->initialise_question_from_seed();
+
+        $question->castextprocessor = new \castext2_qa_processor(new \stack_outofcontext_process());
+
+        if (!empty($question->runtimeerrors)) {
+            http_response_code(500);
+            echo json_encode(["error" => implode("\n", array_keys($question->runtimeerrors))]);
+            exit(0);
+        }
+
+        $translate = new \stack_multilang();
+        $translate->search = '/(<span(\s+lang="[a-zA-Z0-9_-]+"|\s+class="multilang")' .
+                             '{2}\s*>.*?<\/span>)(\s*<span(\s+lang="[a-zA-Z0-9_-]+"' .
+                             '|\s+class="multilang"){2}\s*>.*?<\/span>)+/is';
+        $language = current_language();
+
+        $answers = $data['answers'] ?? [];
+        if (!is_array($answers)) {
+            $answers = [];
+        }
+
+        foreach ($question->inputs as $name => $input) {
+            if ($input->get_extra_option('allowempty') && !array_key_exists($name, $answers)) {
+                $answers[$name] = '';
+            }
+        }
+
+        $plots = [];
+        $storeprefix = uniqid();
+        $scores = [];
+        $prts = [];
+        $prtresults = [];
+
+        foreach ($question->prts as $index => $prt) {
+            $result = $question->get_prt_result($index, $answers, true);
+
+            if ($result->get_errors() || !$question->has_necessary_prt_inputs($prt, $answers, true)) {
+                echo json_encode([
+                    "isgradable" => false,
+                    "score" => null,
+                    "scores" => null,
+                    "scoreweights" => null,
+                    "specificfeedback" => null,
+                    "prts" => null,
+                    "prtresults" => null,
+                    "gradingassets" => null,
+                    "responsesummary" => null,
+                    "iframes" => null
+                ]);
+                exit(0);
+            }
+
+            $feedbackstyle = $prt->get_feedbackstyle();
+            $feedback = $result->apply_placeholder_holder($result->get_feedback());
+            $standardfeedback = macstack_standard_prt_feedback($question, $result, $feedbackstyle);
+
+            switch ($feedbackstyle) {
+                case 0:
+                    $overallfeedback = $feedback;
+                    break;
+                case 1:
+                case 2:
+                    $overallfeedback = $standardfeedback . $feedback;
+                    break;
+                case 3:
+                    $overallfeedback = $standardfeedback;
+                    break;
+                default:
+                    $overallfeedback = "Invalid Feedback style";
+                    break;
+            }
+
+            $scores[$index] = $result->get_score();
+            $prts[$index] = $translate->filter(
+                \stack_maths::process_display_castext($overallfeedback),
+                $language
+            );
+            StackPlotReplacer::replace_plots($plots, $prts[$index], "prt-" . $index, $storeprefix);
+
+            $rawNotes = $result->get_answernotes();
+            $cleanNotes = [];
+            if (is_array($rawNotes)) {
+                foreach ($rawNotes as $n) {
+                    if ($n !== null && trim($n) !== '') {
+                        $cleanNotes[] = trim($n);
+                    }
+                }
+            }
+
+            $rawTrace = $result->get_trace();
+            $cleanTrace = [];
+            if (is_array($rawTrace)) {
+                foreach ($rawTrace as $t) {
+                    if ($t !== null && trim($t) !== '') {
+                        $cleanTrace[] = trim($t);
+                    }
+                }
+            }
+
+            $prtresults[$index] = [
+                "name" => $index,
+                "score" => $result->get_score(),
+                "penalty" => $result->get_penalty(),
+                "answernotes" => $cleanNotes,
+                "trace" => $cleanTrace,
+                "errors" => implode("\n", $result->get_errors())
+            ];
+        }
+
+        $weights = $question->get_parts_and_weights();
+        $scores['total'] = 0;
+        foreach ($weights as $prt => $weight) {
+            $prtscore = $weights[$prt] * $scores[$prt];
+            $scores['total'] += $prtscore;
+        }
+        $weights['total'] = $question->defaultmark;
+
+        $specificfeedback = $translate->filter(
+            $question->specificfeedbackinstantiated->apply_placeholder_holder(
+                $question->specificfeedbackinstantiated->get_rendered($question->castextprocessor)
+            ),
+            $language
+        );
+        StackPlotReplacer::replace_plots($plots, $specificfeedback, "specificfeedback", $storeprefix);
+
+        echo json_encode([
+            "isgradable" => true,
+            "score" => $scores['total'],
+            "scores" => $scores,
+            "scoreweights" => $weights,
+            "specificfeedback" => $specificfeedback,
+            "prts" => $prts,
+            "prtresults" => $prtresults,
+            "gradingassets" => (object)$plots,
+            "responsesummary" => $question->summarise_response($answers),
+            "iframes" => StackIframeHolder::$iframes
+        ]);
+        exit(0);
+
+    } catch (\Throwable $e) {
+        http_response_code(500);
+        echo json_encode([
+            "error" => $e->getMessage(),
+            "isgradable" => false
+        ]);
+        exit(0);
+    }
 }

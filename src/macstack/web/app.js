@@ -195,16 +195,20 @@
   }
 
   // --- Inspector Tabs ---
+  function switchInspectorTab(targetId) {
+    dom.inspectorTabs.forEach((t) => {
+      t.classList.toggle('active', t.getAttribute('data-tab') === targetId);
+    });
+    dom.tabPanes.forEach((p) => {
+      p.classList.toggle('active', p.id === targetId);
+    });
+  }
+
   function initInspectorTabs() {
     dom.inspectorTabs.forEach((tab) => {
       tab.addEventListener('click', () => {
         const targetId = tab.getAttribute('data-tab');
-        dom.inspectorTabs.forEach((t) => t.classList.remove('active'));
-        dom.tabPanes.forEach((p) => p.classList.remove('active'));
-
-        tab.classList.add('active');
-        const targetPane = document.getElementById(targetId);
-        if (targetPane) targetPane.classList.add('active');
+        switchInspectorTab(targetId);
       });
     });
   }
@@ -827,6 +831,21 @@
   }
 
   function renderGradedResult(data) {
+    if (data.isgradable === false) {
+      dom.gradeSummaryBanner.style.display = 'flex';
+      dom.gradeSummaryBanner.className = 'grade-banner incorrect';
+      dom.gradeBannerIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-warning"></i>';
+      dom.gradeBannerHeadline.textContent = 'Submission Incomplete';
+      dom.gradeBannerScore.textContent = 'Please enter a valid answer before checking';
+      dom.qStatusText.textContent = 'Incomplete';
+      dom.qPointsText.textContent = 'Not yet graded';
+      hideSpecificFeedback();
+      renderInspectorPRT(data);
+      switchInspectorTab('tab-prt');
+      typeset(dom.gradeSummaryBanner);
+      return;
+    }
+
     const score = typeof data.score === 'number' ? data.score : 0;
     const isFull = score >= 0.999;
     const isPartial = score > 0.001 && score < 0.999;
@@ -888,6 +907,9 @@
 
     // 3. Update PRT Trace in Author Inspector
     renderInspectorPRT(data);
+
+    // Focus PRT Trace tab so author immediately sees the trace
+    switchInspectorTab('tab-prt');
 
     typeset(dom.gradeSummaryBanner);
   }
@@ -1207,14 +1229,40 @@
   }
 
   function renderInspectorPRT(gradeData) {
-    if (!gradeData || !gradeData.prtresults) {
+    if (!gradeData || (!gradeData.prtresults && !gradeData.scores && !gradeData.prts)) {
       dom.prtStatusLabel.textContent = 'Awaiting submission';
       dom.prtBadge.style.display = 'none';
       dom.prtTraceList.innerHTML = `<div class="placeholder-empty">Submit an answer to view PRT grading trace and answer notes.</div>`;
       return;
     }
 
-    const prtResults = gradeData.prtresults;
+    if (gradeData.isgradable === false) {
+      dom.prtStatusLabel.textContent = 'Incomplete';
+      dom.prtBadge.style.display = 'none';
+      dom.prtTraceList.innerHTML = `<div class="placeholder-empty text-warning"><i class="fa-solid fa-circle-exclamation"></i> Required input fields are empty or invalid for PRT evaluation.</div>`;
+      return;
+    }
+
+    let prtResults = gradeData.prtresults;
+    if (!prtResults || Object.keys(prtResults).length === 0) {
+      prtResults = {};
+      const names = new Set([
+        ...Object.keys(gradeData.scores || {}),
+        ...Object.keys(gradeData.prts || {})
+      ]);
+      names.delete('total');
+      for (const name of names) {
+        prtResults[name] = {
+          name: name,
+          score: gradeData.scores ? gradeData.scores[name] : (gradeData.score ?? 0),
+          penalty: 0,
+          answernotes: [],
+          trace: [],
+          errors: ''
+        };
+      }
+    }
+
     const prtNames = Object.keys(prtResults);
     dom.prtBadge.style.display = 'inline-block';
     dom.prtBadge.textContent = prtNames.length;
@@ -1224,12 +1272,14 @@
     for (const name of prtNames) {
       const res = prtResults[name];
       const score = typeof res.score === 'number' ? res.score : (gradeData.scores ? gradeData.scores[name] : 0);
-      const penalty = res.penalty || 0;
+      const penalty = typeof res.penalty === 'number' ? res.penalty : 0;
       const notes = res.answernotes || [];
+      const trace = res.trace || [];
 
       let chipsHtml = '';
       if (Array.isArray(notes)) {
         for (const n of notes) {
+          if (!n || !n.trim()) continue;
           const isTrue = n.endsWith('-T');
           const isFalse = n.endsWith('-F');
           const chipClass = isTrue ? 'true-branch' : isFalse ? 'false-branch' : '';
@@ -1237,18 +1287,34 @@
         }
       }
 
+      let traceHtml = '';
+      if (Array.isArray(trace) && trace.length > 0) {
+        traceHtml = `
+          <details class="prt-trace-details mt-2">
+            <summary class="text-xs font-mono text-muted cursor-pointer" style="user-select: none;">
+              <i class="fa-solid fa-terminal"></i> Maxima Trace (${trace.length} lines)
+            </summary>
+            <pre class="prt-trace-code font-mono text-xs mt-1 p-2 rounded">${escapeHtml(trace.join('\n'))}</pre>
+          </details>
+        `;
+      }
+
+      const scoreBadgeClass = score >= 0.999 ? 'badge-seeds' : (score > 0.001 ? 'badge-warning' : 'badge-error');
+
       html += `
         <div class="prt-card">
           <div class="prt-card-header">
             <span class="prt-name">${escapeHtml(name)}</span>
             <div class="prt-metrics">
-              <span class="badge ${score >= 0.99 ? 'badge-seeds' : 'badge-error'}">Score: ${score}</span>
+              <span class="badge ${scoreBadgeClass}">Score: ${score.toFixed(2)}</span>
               <span class="badge badge-seeds">Penalty: ${penalty}</span>
             </div>
           </div>
+          <div class="prt-answernotes-label text-xs text-muted font-semibold mt-2">Answer Notes:</div>
           <div class="prt-answernotes">
             ${chipsHtml || '<span class="text-subtle font-mono text-xs">No answer notes recorded</span>'}
           </div>
+          ${traceHtml}
           ${res.errors ? `<div class="error-banner mt-3 font-mono text-xs">${escapeHtml(res.errors)}</div>` : ''}
         </div>
       `;
