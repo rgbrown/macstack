@@ -15,6 +15,7 @@
     questionData: null,
     userAnswers: {},
     lastGradedResult: null,
+    pendingRegrade: false,
     eventSource: null,
     theme: localStorage.getItem('macstack-theme') || 'light'
   };
@@ -86,6 +87,7 @@
     // Inspector Tabs
     inspectorTabs: document.querySelectorAll('.inspector-tab'),
     tabPanes: document.querySelectorAll('.tab-pane'),
+    varsBadge: document.getElementById('vars-badge'),
     prtBadge: document.getElementById('prt-badge'),
     lintBadge: document.getElementById('lint-badge'),
     testsBadge: document.getElementById('tests-badge'),
@@ -95,7 +97,6 @@
     varsCountLabel: document.getElementById('vars-count-label'),
     inspectorQuestionNote: document.getElementById('inspector-question-note'),
     varsErrorsContainer: document.getElementById('vars-errors-container'),
-    varsErrorsText: document.getElementById('vars-errors-text'),
     prtTraceList: document.getElementById('prt-trace-list'),
     prtStatusLabel: document.getElementById('prt-status-label'),
     lintList: document.getElementById('lint-list'),
@@ -145,6 +146,47 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Renders structured CasDiagnostic items (or wraps fallback text) into HTML
+   */
+  function renderCasDiagnosticsHtml(diagnostics, fallbackErrorText = '') {
+    let list = Array.isArray(diagnostics) ? diagnostics.filter(Boolean) : [];
+    if (list.length === 0 && fallbackErrorText && String(fallbackErrorText).trim()) {
+      list = [{
+        field: 'cas',
+        label: 'Maxima Error',
+        message: String(fallbackErrorText).trim()
+      }];
+    }
+
+    if (list.length === 0) return '';
+
+    return list.map((diag) => {
+      const label = diag.label || diag.field || 'Maxima Error';
+      let coords = '';
+      if (diag.line != null && diag.col != null) {
+        coords = `<span class="cas-error-coords">Line ${escapeHtml(String(diag.line))}, Col ${escapeHtml(String(diag.col))}</span>`;
+      } else if (diag.line != null) {
+        coords = `<span class="cas-error-coords">Line ${escapeHtml(String(diag.line))}</span>`;
+      } else if (diag.col != null) {
+        coords = `<span class="cas-error-coords">Col ${escapeHtml(String(diag.col))}</span>`;
+      }
+
+      const snippetHtml = diag.snippet ? `<pre class="cas-code-snippet">${escapeHtml(diag.snippet)}</pre>` : '';
+
+      return `
+        <div class="cas-error-item">
+          <div class="cas-error-meta">
+            <span class="cas-field-badge"><i class="fa-solid fa-code"></i> ${escapeHtml(label)}</span>
+            ${coords}
+          </div>
+          <div class="cas-error-message">${escapeHtml(diag.message || 'Evaluation error')}</div>
+          ${snippetHtml}
+        </div>
+      `;
+    }).join('');
   }
 
   /**
@@ -340,7 +382,16 @@
       }
 
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody && (errBody.error || errBody.message)) {
+            errMsg = errBody.error || errBody.message;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
 
       state.questionData = data;
@@ -360,15 +411,27 @@
     const vars = data.vars || {};
     const lint = data.lint || [];
     const hints = data.hints || [];
+    const casErrors = data.cas_errors || [];
+    const renderFailed = Boolean(data.render_failed);
 
     // 1. Update Header & Meta
     dom.activeQuestionName.textContent = summary.name || summary.idnumber || summary.relpath;
     dom.activeQuestionId.textContent = summary.idnumber || summary.relpath;
-    dom.qSeedVal.textContent = data.effective_seed;
-    dom.customSeedInput.value = data.effective_seed;
+    dom.qSeedVal.textContent = data.effective_seed != null ? data.effective_seed : '—';
+    dom.customSeedInput.value = data.effective_seed != null ? data.effective_seed : '';
+
+    // Action buttons disabled state
+    dom.btnCheckAnswer.disabled = renderFailed;
+    dom.btnCheckAnswerInline.disabled = renderFailed;
+    dom.btnFillCorrect.disabled = renderFailed;
+    dom.btnFillCorrectInline.disabled = renderFailed;
 
     // Reset student status
-    dom.qStatusText.textContent = 'Not yet answered';
+    if (renderFailed) {
+      dom.qStatusText.textContent = 'CAS Error';
+    } else {
+      dom.qStatusText.textContent = 'Not yet answered';
+    }
     hideGradeBanner();
     hideSpecificFeedback();
 
@@ -376,7 +439,42 @@
     populateSeedSelector(summary.deployed_seeds || [], data.effective_seed);
 
     // 3. Render Question Body
-    renderQuestionFormulation(render, data.effective_seed);
+    if (renderFailed) {
+      const effectiveSeedStr = data.effective_seed != null ? String(data.effective_seed) : '—';
+      const fallbackVarsError = (vars && vars.errors) || 'Failed to evaluate question in Maxima.';
+      const diagnosticsHtml = renderCasDiagnosticsHtml(casErrors, fallbackVarsError);
+
+      const errorPanelHtml = `
+        <div class="cas-error-panel">
+          <div class="cas-error-header">
+            <div class="cas-error-title">
+              <i class="fa-solid fa-circle-exclamation"></i> Maxima / CASText Evaluation Error
+            </div>
+            <span class="cas-seed-pill">Seed ${escapeHtml(effectiveSeedStr)}</span>
+          </div>
+          <div class="cas-error-list">
+            ${diagnosticsHtml}
+          </div>
+          <div class="cas-error-hint">
+            <i class="fa-regular fa-lightbulb"></i> Fix the Maxima/CASText expression in your source file or test another seed above.
+          </div>
+        </div>
+      `;
+
+      let rawDisclosureHtml = '';
+      if (data.raw_questiontext && data.raw_questiontext.trim()) {
+        rawDisclosureHtml = `
+          <details class="raw-questiontext-disclosure">
+            <summary><i class="fa-solid fa-code"></i> Show Raw Question Text (unrendered XML)</summary>
+            <pre class="raw-questiontext-pre">${escapeHtml(data.raw_questiontext)}</pre>
+          </details>
+        `;
+      }
+
+      dom.questionText.innerHTML = errorPanelHtml + rawDisclosureHtml;
+    } else {
+      renderQuestionFormulation(render, data.effective_seed);
+    }
 
     // 4. Render Hints Accordion
     renderHints(hints);
@@ -385,13 +483,17 @@
     renderGeneralFeedback(render, summary);
 
     // 6. Update Inspector Tabs
-    renderInspectorVars(vars);
-    renderInspectorLint(lint);
+    renderInspectorVars(vars, casErrors);
+    renderInspectorLint(lint, casErrors);
     renderInspectorPRT(null); // Clear until submission
     renderInspectorTestsInitial(summary.qtest_count || 0);
 
     // Typeset entire container
-    typeset([dom.questionText, dom.hintsContent, dom.generalFeedbackAccordion, dom.varsTbody]);
+    if (!renderFailed) {
+      typeset([dom.questionText, dom.hintsContent, dom.generalFeedbackAccordion, dom.varsTbody]);
+    } else {
+      typeset([dom.hintsContent, dom.generalFeedbackAccordion, dom.varsTbody]);
+    }
   }
 
   function populateSeedSelector(deployedSeeds, effectiveSeed) {
@@ -769,7 +871,15 @@
       const data = await res.json();
 
       const validationHtml = data.validation ?? data.Validation ?? '';
-      valContainer.innerHTML = validationHtml;
+      if (validationHtml) {
+        valContainer.innerHTML = validationHtml;
+      } else if (data.cas_errors && data.cas_errors.length > 0) {
+        valContainer.innerHTML = renderCasDiagnosticsHtml(data.cas_errors, data.error);
+      } else if (data.error) {
+        valContainer.innerHTML = `<span class="text-danger font-mono text-xs">${escapeHtml(data.error)}</span>`;
+      } else {
+        valContainer.innerHTML = '';
+      }
       typeset(valContainer);
     } catch (err) {
       console.warn(`[macstack] Validation failed for ${inputName}:`, err);
@@ -779,6 +889,7 @@
   // --- Check & Grade Answers ---
   async function gradeCurrentAnswers() {
     if (!state.activePath) return;
+    if (state.questionData?.render_failed) return;
     const answers = collectUserAnswers();
 
     dom.btnCheckAnswer.disabled = true;
@@ -796,7 +907,16 @@
         })
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody && (errBody.error || errBody.message)) {
+            errMsg = errBody.error || errBody.message;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       state.lastGradedResult = data;
 
@@ -806,12 +926,31 @@
       showToast(`Grading error: ${err.message}`, 'error');
       dom.qStatusText.textContent = 'Grading Error';
     } finally {
-      dom.btnCheckAnswer.disabled = false;
-      dom.btnCheckAnswerInline.disabled = false;
+      if (!state.questionData?.render_failed) {
+        dom.btnCheckAnswer.disabled = false;
+        dom.btnCheckAnswerInline.disabled = false;
+      }
     }
   }
 
   function renderGradedResult(data) {
+    if (data.has_cas_error || data.has_prt_errors) {
+      dom.gradeSummaryBanner.style.display = 'flex';
+      dom.gradeSummaryBanner.className = 'grade-banner cas-error';
+      dom.gradeBannerIcon.innerHTML = '<i class="fa-solid fa-bug text-danger"></i>';
+      dom.gradeBannerHeadline.textContent = data.has_prt_errors ? 'PRT Maxima Error' : 'Maxima Grading Error';
+      dom.gradeBannerScore.textContent = data.has_prt_errors
+        ? 'A Maxima runtime error occurred while evaluating a PRT — see PRT Trace'
+        : (data.error || 'Question could not be graded due to a CAS error');
+      dom.qStatusText.textContent = 'Grading Error (CAS)';
+      dom.qPointsText.textContent = 'Error during grading';
+      hideSpecificFeedback();
+      renderInspectorPRT(data);
+      switchInspectorTab('tab-prt');
+      typeset(dom.gradeSummaryBanner);
+      return;
+    }
+
     if (data.isgradable === false) {
       dom.gradeSummaryBanner.style.display = 'flex';
       dom.gradeSummaryBanner.className = 'grade-banner incorrect';
@@ -997,6 +1136,7 @@
   function resetQuestionInputs() {
     state.userAnswers = {};
     state.lastGradedResult = null;
+    state.pendingRegrade = false;
     hideGradeBanner();
     hideSpecificFeedback();
     dom.qStatusText.textContent = 'Not yet answered';
@@ -1024,10 +1164,24 @@
         })
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody && (errBody.error || errBody.message)) {
+            errMsg = errBody.error || errBody.message;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
 
-      showToast(`Successfully deployed ${data.count || 50} seeds to XML!`, 'success');
+      if (data.error || !data.count || data.count === 0) {
+        showToast(`Deploy seeds failed: ${data.error || '0 valid seeds generated'}`, 'error', 5000);
+        return;
+      }
+
+      showToast(`Successfully deployed ${data.count} seeds to XML!`, 'success');
 
       // Refresh question list and current question
       await loadQuestions(true);
@@ -1057,12 +1211,43 @@
         body: JSON.stringify({ path: state.activePath })
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody && (errBody.error || errBody.message)) {
+            errMsg = errBody.error || errBody.message;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
+
+      if (data.error || (data.cas_errors && data.cas_errors.length > 0)) {
+        dom.testsSummaryBanner.style.display = 'flex';
+        dom.testsSummaryBanner.className = 'tests-summary failed';
+        dom.testsSummaryStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Test execution blocked by Maxima error';
+        dom.testsResultsContainer.innerHTML = `
+          <div class="cas-error-panel">
+            <div class="cas-error-header">
+              <div class="cas-error-title">
+                <i class="fa-solid fa-circle-exclamation"></i> Maxima Evaluation Error
+              </div>
+            </div>
+            <div class="cas-error-list">
+              ${renderCasDiagnosticsHtml(data.cas_errors || [], data.error)}
+            </div>
+          </div>
+        `;
+        return;
+      }
 
       renderTestResults(data);
     } catch (err) {
       console.error('[macstack] Test run error:', err);
+      dom.testsSummaryBanner.style.display = 'flex';
+      dom.testsSummaryBanner.className = 'tests-summary failed';
+      dom.testsSummaryStatus.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Test run failed';
       dom.testsResultsContainer.innerHTML = `<div class="error-banner">Test run failed: ${escapeHtml(err.message)}</div>`;
     } finally {
       dom.btnRunTests.disabled = false;
@@ -1139,8 +1324,8 @@
   }
 
   // --- Inspector Tabs Renderers ---
-  function renderInspectorVars(vars) {
-    const variables = vars.variables || [];
+  function renderInspectorVars(vars, casErrors = []) {
+    const variables = (vars && vars.variables) || [];
     dom.varsCountLabel.textContent = `${variables.length} variable${variables.length === 1 ? '' : 's'}`;
 
     if (variables.length === 0) {
@@ -1152,7 +1337,7 @@
           <tr>
             <td><code class="font-bold">${escapeHtml(v.name)}</code></td>
             <td><code>${escapeHtml(String(v.value !== undefined ? v.value : v.expr || ''))}</code></td>
-            <td>\\(${v.display || v.value || ''}\\)</td>
+            <td>\\(${escapeHtml(String(v.display || v.value || ''))}\\)</td>
           </tr>
         `;
       }
@@ -1160,40 +1345,74 @@
     }
 
     // Question Note
-    dom.inspectorQuestionNote.innerHTML = vars.questionnote || '<em>None</em>';
+    dom.inspectorQuestionNote.innerHTML = (vars && vars.questionnote) || '<em>None</em>';
 
     // Errors
-    if (vars.errors && vars.errors.trim()) {
-      dom.varsErrorsContainer.style.display = 'block';
-      dom.varsErrorsText.textContent = vars.errors;
+    const hasCasErrors = (casErrors && casErrors.length > 0) || Boolean(vars && vars.errors && String(vars.errors).trim());
+    if (dom.varsBadge) {
+      if (hasCasErrors) {
+        dom.varsBadge.style.display = 'inline-block';
+        dom.varsBadge.textContent = '!';
+        dom.varsBadge.classList.add('badge-danger');
+      } else {
+        dom.varsBadge.style.display = 'none';
+        dom.varsBadge.classList.remove('badge-danger');
+      }
+    }
+
+    if (hasCasErrors) {
+      dom.varsErrorsContainer.style.display = 'flex';
+      dom.varsErrorsContainer.innerHTML = renderCasDiagnosticsHtml(casErrors, vars?.errors);
     } else {
       dom.varsErrorsContainer.style.display = 'none';
-      dom.varsErrorsText.textContent = '';
+      dom.varsErrorsContainer.innerHTML = '';
     }
 
     typeset([dom.varsTbody, dom.inspectorQuestionNote]);
   }
 
-  function renderInspectorLint(lint) {
-    dom.lintCountLabel.textContent = `${lint.length} issue${lint.length === 1 ? '' : 's'}`;
-    if (lint.length > 0) {
+  function renderInspectorLint(lint = [], casErrors = []) {
+    const casLintItems = (casErrors || []).map((d) => ({
+      severity: 'error',
+      code: 'cas-error',
+      field: `${d.label || d.field || 'CAS'}${d.seed != null ? ` (Seed ${d.seed})` : ''}`,
+      message: d.message,
+      snippet: d.snippet
+    }));
+
+    const combined = [...casLintItems, ...(lint || [])];
+    const totalCount = combined.length;
+
+    dom.lintCountLabel.textContent = `${totalCount} issue${totalCount === 1 ? '' : 's'}`;
+
+    const hasError = combined.some((item) => (item.severity || '').toLowerCase() === 'error');
+
+    if (totalCount > 0) {
       dom.lintBadge.style.display = 'inline-block';
-      dom.lintBadge.textContent = lint.length;
+      dom.lintBadge.textContent = totalCount;
+      if (hasError) {
+        dom.lintBadge.classList.add('badge-danger');
+      } else {
+        dom.lintBadge.classList.remove('badge-danger');
+      }
     } else {
       dom.lintBadge.style.display = 'none';
+      dom.lintBadge.classList.remove('badge-danger');
     }
 
-    if (lint.length === 0) {
+    if (totalCount === 0) {
       dom.lintList.innerHTML = `<div class="placeholder-empty"><i class="fa-solid fa-check text-success"></i> No lint issues found. Clean!</div>`;
       return;
     }
 
     let html = '';
-    for (const item of lint) {
+    for (const item of combined) {
       const sev = (item.severity || 'info').toLowerCase();
       let icon = 'fa-info-circle';
       if (sev === 'error') icon = 'fa-circle-xmark';
       else if (sev === 'warning') icon = 'fa-triangle-exclamation';
+
+      const snippetHtml = item.snippet ? `<pre class="cas-code-snippet">${escapeHtml(item.snippet)}</pre>` : '';
 
       html += `
         <div class="diagnostic-item ${sev}">
@@ -1202,6 +1421,7 @@
             <span class="diag-field">${escapeHtml(item.field || '')}</span>
           </div>
           <div class="diag-message">${escapeHtml(item.message || '')}</div>
+          ${snippetHtml}
         </div>
       `;
     }
@@ -1210,16 +1430,27 @@
   }
 
   function renderInspectorPRT(gradeData) {
-    if (!gradeData || (!gradeData.prtresults && !gradeData.scores && !gradeData.prts)) {
+    if (!gradeData || (!gradeData.prtresults && !gradeData.scores && !gradeData.prts && !gradeData.has_cas_error)) {
       dom.prtStatusLabel.textContent = 'Awaiting submission';
       dom.prtBadge.style.display = 'none';
+      dom.prtBadge.classList.remove('badge-danger');
       dom.prtTraceList.innerHTML = `<div class="placeholder-empty">Submit an answer to view PRT grading trace and answer notes.</div>`;
       return;
     }
 
-    if (gradeData.isgradable === false) {
+    if (gradeData.has_cas_error && (!gradeData.prtresults || Object.keys(gradeData.prtresults).length === 0)) {
+      dom.prtStatusLabel.textContent = 'CAS Error';
+      dom.prtBadge.style.display = 'inline-block';
+      dom.prtBadge.textContent = '!';
+      dom.prtBadge.classList.add('badge-danger');
+      dom.prtTraceList.innerHTML = renderCasDiagnosticsHtml(gradeData.cas_errors || [], gradeData.error || 'Question-level CAS grading error');
+      return;
+    }
+
+    if (gradeData.isgradable === false && !gradeData.has_prt_errors) {
       dom.prtStatusLabel.textContent = 'Incomplete';
       dom.prtBadge.style.display = 'none';
+      dom.prtBadge.classList.remove('badge-danger');
       dom.prtTraceList.innerHTML = `<div class="placeholder-empty text-warning"><i class="fa-solid fa-circle-exclamation"></i> Required input fields are empty or invalid for PRT evaluation.</div>`;
       return;
     }
@@ -1245,14 +1476,30 @@
     }
 
     const prtNames = Object.keys(prtResults);
+    let anyPrtHasErrors = Boolean(gradeData.has_prt_errors);
+
+    for (const name of prtNames) {
+      const res = prtResults[name];
+      if (res.has_errors || (res.errors && String(res.errors).trim()) || (res.diagnostics && res.diagnostics.length > 0)) {
+        anyPrtHasErrors = true;
+      }
+    }
+
     dom.prtBadge.style.display = 'inline-block';
-    dom.prtBadge.textContent = prtNames.length;
-    dom.prtStatusLabel.textContent = `${prtNames.length} PRT(s) evaluated`;
+    dom.prtBadge.textContent = anyPrtHasErrors ? '!' : prtNames.length;
+    if (anyPrtHasErrors) {
+      dom.prtBadge.classList.add('badge-danger');
+      dom.prtStatusLabel.textContent = 'PRT CAS Error';
+    } else {
+      dom.prtBadge.classList.remove('badge-danger');
+      dom.prtStatusLabel.textContent = `${prtNames.length} PRT(s) evaluated`;
+    }
 
     let html = '';
     for (const name of prtNames) {
       const res = prtResults[name];
-      const score = typeof res.score === 'number' ? res.score : (gradeData.scores ? gradeData.scores[name] : 0);
+      const hasError = res.has_errors || (res.errors && String(res.errors).trim()) || (res.diagnostics && res.diagnostics.length > 0) || typeof res.score !== 'number';
+      const score = typeof res.score === 'number' ? res.score : null;
       const penalty = typeof res.penalty === 'number' ? res.penalty : 0;
       const notes = res.answernotes || [];
       const trace = res.trace || [];
@@ -1280,14 +1527,29 @@
         `;
       }
 
-      const scoreBadgeClass = score >= 0.999 ? 'badge-seeds' : (score > 0.001 ? 'badge-warning' : 'badge-error');
+      let scoreBadgeHtml = '';
+      if (hasError && score === null) {
+        scoreBadgeHtml = `<span class="badge badge-error">CAS Error</span>`;
+      } else if (typeof score === 'number') {
+        const scoreBadgeClass = score >= 0.999 ? 'badge-seeds' : (score > 0.001 ? 'badge-warning' : 'badge-error');
+        scoreBadgeHtml = `<span class="badge ${scoreBadgeClass}">Score: ${score.toFixed(2)}</span>`;
+      } else {
+        scoreBadgeHtml = `<span class="badge badge-error">CAS Error</span>`;
+      }
+
+      let diagnosticsHtml = '';
+      if (res.diagnostics && res.diagnostics.length > 0) {
+        diagnosticsHtml = `<div class="mt-2">${renderCasDiagnosticsHtml(res.diagnostics, res.errors)}</div>`;
+      } else if (res.errors && String(res.errors).trim()) {
+        diagnosticsHtml = `<div class="mt-2">${renderCasDiagnosticsHtml([], res.errors)}</div>`;
+      }
 
       html += `
         <div class="prt-card">
           <div class="prt-card-header">
             <span class="prt-name">${escapeHtml(name)}</span>
             <div class="prt-metrics">
-              <span class="badge ${scoreBadgeClass}">Score: ${score.toFixed(2)}</span>
+              ${scoreBadgeHtml}
               <span class="badge badge-seeds">Penalty: ${penalty}</span>
             </div>
           </div>
@@ -1296,7 +1558,7 @@
             ${chipsHtml || '<span class="text-subtle font-mono text-xs">No answer notes recorded</span>'}
           </div>
           ${traceHtml}
-          ${res.errors ? `<div class="error-banner mt-3 font-mono text-xs">${escapeHtml(res.errors)}</div>` : ''}
+          ${diagnosticsHtml}
         </div>
       `;
     }
@@ -1349,8 +1611,12 @@
       showToast('Live Reloaded from disk', 'reload', 2500);
 
       // Save user inputs currently in DOM
-      const preservedAnswers = collectUserAnswers();
-      const wasGraded = state.lastGradedResult !== null;
+      // If previous state had userAnswers preserved while render was failing, preserve those!
+      const currentDomAnswers = collectUserAnswers();
+      const preservedAnswers = Object.keys(currentDomAnswers).length > 0
+        ? currentDomAnswers
+        : (state.userAnswers || {});
+      const wasGraded = state.lastGradedResult !== null || Boolean(state.pendingRegrade);
 
       // Reload questions list (diagnostics/seeds may have changed)
       await loadQuestions(true);
@@ -1359,7 +1625,16 @@
       if (state.activePath) {
         await selectQuestion(state.activePath, state.activeSeed);
 
-        // Restore user answers
+        if (state.questionData?.render_failed) {
+          // Keep preserved answers and grading status in memory, but don't try to fill or grade broken question
+          state.userAnswers = preservedAnswers;
+          if (wasGraded) {
+            state.pendingRegrade = true;
+          }
+          return;
+        }
+
+        // render_failed is false!
         state.userAnswers = preservedAnswers;
         restoreUserAnswers(state.questionData?.render?.inputs || {});
 
@@ -1370,6 +1645,7 @@
 
         // If previously graded, re-grade automatically
         if (wasGraded && Object.keys(preservedAnswers).length > 0) {
+          state.pendingRegrade = false;
           await gradeCurrentAnswers();
         }
       }

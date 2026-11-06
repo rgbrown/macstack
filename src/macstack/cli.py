@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 import sys
-from typing import Any
+from typing import Any, NoReturn
 
 from rich.console import Console
 from rich.markup import escape
@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.tree import Tree
 import typer
 
+from macstack.cas_errors import CasDiagnostic, parse_and_enrich_cas_errors
 from macstack.config import (
     CourseConfig,
     find_course_config,
@@ -22,7 +23,7 @@ from macstack.config import (
     slugify,
 )
 from macstack.edit_session import EditSession
-from macstack.engine import StackEngine
+from macstack.engine import StackEngine, StackEngineError
 from macstack.linter import LintIssue, lint_question
 from macstack.preview_server import run_preview
 from macstack.repl import launch_repl
@@ -97,6 +98,62 @@ def _find_xml_files(paths: list[Path]) -> list[Path]:
         elif p.is_dir():
             files.extend(sorted(p.glob("**/*.xml")))
     return sorted(set(files))
+
+
+def _render_cas_diagnostics_panel(diags: list[CasDiagnostic], title: str = "Maxima Evaluation Error") -> Panel:
+    """Format CasDiagnostic list into a styled Rich Panel with escaped Maxima expressions."""
+    lines: list[str] = []
+    for d in diags:
+        header = f"[bold red]• {escape(d.label)}[/bold red]"
+        if d.line is not None:
+            pos = f" (line {d.line}" + (f", col {d.col}" if d.col is not None else "") + ")"
+            header += f" [dim]{escape(pos)}[/dim]"
+        lines.append(header)
+        lines.append(f"  {escape(d.message)}")
+        if d.snippet:
+            lines.append("")
+            for s_line in d.snippet.splitlines():
+                lines.append(f"    [dim]{escape(s_line)}[/dim]")
+            lines.append("")
+
+    content = "\n".join(lines).strip()
+    return Panel(content or "[red]Unknown Maxima error[/red]", title=title, border_style="red")
+
+
+def _handle_cli_cas_error(
+    raw_err: str,
+    xml_str: str,
+    engine: StackEngine | None = None,
+    api_xml: str | None = None,
+    seed: int | None = None,
+    as_json: bool = False,
+    probed_errors: list[dict[str, Any]] | None = None,
+) -> NoReturn:
+    """Enrich a raw Maxima error or StackEngineError and terminate the CLI with exit code 1."""
+    if "must validate true before compiling" in raw_err and probed_errors is None and engine and api_xml:
+        try:
+            v = engine.inspect_vars(api_xml, seed=seed)
+            probed_errors = v.get("probed_errors")
+        except Exception:
+            pass
+
+    diags = parse_and_enrich_cas_errors(
+        raw_err,
+        xml_str=xml_str,
+        probed_errors=probed_errors,
+        seed=seed,
+    )
+
+    if as_json:
+        console.print_json(json.dumps({
+            "ok": False,
+            "error": diags[0].message if diags else raw_err,
+            "cas_errors": [d.to_dict() for d in diags],
+        }))
+        raise typer.Exit(code=1)
+
+    err_console.print(_render_cas_diagnostics_panel(diags))
+    raise typer.Exit(code=1)
 
 
 # ==============================================================================
@@ -442,10 +499,26 @@ def vars(
     xml_str = question_xml.read_text(encoding="utf-8")
     api_xml, effective_seed, _ = prepare_for_api(xml_str, seed_override=seed)
 
-    res = engine.inspect_vars(api_xml, seed=effective_seed)
+    try:
+        res = engine.inspect_vars(api_xml, seed=effective_seed)
+    except StackEngineError as exc:
+        _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, seed=effective_seed, as_json=as_json)
+
+    has_errors = bool(res.get("errors") or res.get("probed_errors"))
+    diags: list[CasDiagnostic] = []
+    if has_errors:
+        diags = parse_and_enrich_cas_errors(
+            res.get("errors", ""),
+            xml_str=xml_str,
+            probed_errors=res.get("probed_errors"),
+            seed=effective_seed,
+        )
+        res["cas_errors"] = [d.to_dict() for d in diags]
 
     if as_json:
         console.print_json(json.dumps(res))
+        if has_errors:
+            raise typer.Exit(code=1)
         return
 
     table = Table(title=f"Question Variables (Seed: {res.get('seed', effective_seed)})", border_style="cyan")
@@ -469,8 +542,12 @@ def vars(
             table.add_row(str(k), str(v), "")
 
     console.print(table)
-    if "questionnote" in res:
+    if res.get("questionnote"):
         console.print(Panel(res["questionnote"], title="Evaluated Question Note", border_style="green"))
+
+    if has_errors:
+        err_console.print(_render_cas_diagnostics_panel(diags))
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -488,7 +565,10 @@ def render(
     xml_str = question_xml.read_text(encoding="utf-8")
     api_xml, effective_seed, _ = prepare_for_api(xml_str, seed_override=seed)
 
-    res = engine.render(api_xml, seed=effective_seed)
+    try:
+        res = engine.render(api_xml, seed=effective_seed)
+    except StackEngineError as exc:
+        _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, seed=effective_seed, as_json=as_json)
 
     if as_json:
         console.print_json(json.dumps(res))
@@ -517,7 +597,10 @@ def validate(
     xml_str = question_xml.read_text(encoding="utf-8")
     api_xml, effective_seed, _ = prepare_for_api(xml_str, seed_override=seed)
 
-    res = engine.validate(api_xml, input_name=input_name, answers=answers_map, seed=effective_seed)
+    try:
+        res = engine.validate(api_xml, input_name=input_name, answers=answers_map, seed=effective_seed)
+    except StackEngineError as exc:
+        _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, seed=effective_seed, as_json=as_json)
 
     if as_json:
         console.print_json(json.dumps(res))
@@ -547,14 +630,65 @@ def grade(
     student_answers = _parse_key_val_options(answer)
 
     if use_tans or not student_answers:
-        rendered = engine.render(api_xml, seed=effective_seed)
+        try:
+            rendered = engine.render(api_xml, seed=effective_seed)
+        except StackEngineError as exc:
+            _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, seed=effective_seed, as_json=as_json)
         model_answers = _extract_model_answers(rendered.get("inputs", {}))
-        # Merge, letting student answers override model answers if provided
         final_answers = {**model_answers, **student_answers}
     else:
         final_answers = student_answers
 
-    res = engine.grade(api_xml, answers=final_answers, seed=effective_seed)
+    try:
+        res = engine.grade(api_xml, answers=final_answers, seed=effective_seed)
+    except StackEngineError as exc:
+        _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, seed=effective_seed, as_json=as_json)
+
+    has_cas_err = bool(res.get("has_cas_error"))
+    has_prt_err = bool(res.get("has_prt_errors"))
+
+    if has_cas_err or has_prt_err:
+        cas_diags: list[CasDiagnostic] = []
+        if has_cas_err:
+            cas_diags.extend(parse_and_enrich_cas_errors(
+                res.get("error", ""),
+                xml_str=xml_str,
+                probed_errors=res.get("probed_errors"),
+                seed=effective_seed,
+            ))
+        if has_prt_err:
+            prtresults = res.get("prtresults") or {}
+            for prt_name, prt_res in prtresults.items():
+                if isinstance(prt_res, dict) and prt_res.get("errors"):
+                    prt_diags = parse_and_enrich_cas_errors(
+                        prt_res["errors"],
+                        xml_str=xml_str,
+                        probed_errors=res.get("probed_errors"),
+                        seed=effective_seed,
+                        default_field=f"prt:{prt_name}:feedbackvariables",
+                    )
+                    prt_res["diagnostics"] = [d.to_dict() for d in prt_diags]
+                    cas_diags.extend(prt_diags)
+        res["cas_errors"] = [d.to_dict() for d in cas_diags]
+
+        if as_json:
+            console.print_json(json.dumps(res))
+            raise typer.Exit(code=1)
+
+        title = "Maxima CAS Error" if has_cas_err else "PRT Grading Error (CAS)"
+        err_console.print(_render_cas_diagnostics_panel(cas_diags, title=title))
+        for prt_name, prt_res in (res.get("prtresults") or {}).items():
+            if isinstance(prt_res, dict) and (prt_res.get("answernotes") or prt_res.get("trace")):
+                notes_str = "\n".join(f"  • {n}" for n in prt_res.get("answernotes", []))
+                trace_str = "\n".join(f"  > {t}" for t in prt_res.get("trace", []))
+                body = ""
+                if notes_str:
+                    body += f"[bold]Answer Notes:[/bold]\n{escape(notes_str)}\n"
+                if trace_str:
+                    body += f"[bold]Trace:[/bold]\n{escape(trace_str)}"
+                if body:
+                    err_console.print(Panel(body, title=f"PRT {escape(prt_name)} Diagnostics", border_style="yellow"))
+        raise typer.Exit(code=1)
 
     if as_json:
         console.print_json(json.dumps(res))
@@ -590,17 +724,29 @@ def deploy_seeds(
     api_xml, _, _ = prepare_for_api(xml_str)
 
     with console.status(f"[bold cyan]Deploying {count} unique seeds for {question_xml.name}..."):
-        res = engine.deploy_seeds(api_xml, count=count, max_attempts=max_attempts)
+        try:
+            res = engine.deploy_seeds(api_xml, count=count, max_attempts=max_attempts)
+        except StackEngineError as exc:
+            _handle_cli_cas_error(exc.message, xml_str, engine=engine, api_xml=api_xml, as_json=as_json)
 
     seeds: list[int] = res.get("seeds", [])
     if seeds:
         set_deployed_seeds(question_xml, seeds)
-
-    if as_json:
-        console.print_json(json.dumps({"seeds": seeds, "count": len(seeds)}))
+        if as_json:
+            console.print_json(json.dumps({"seeds": seeds, "count": len(seeds)}))
+            return
+        console.print(f"[green]Successfully deployed {len(seeds)} unique seed(s) to {question_xml}[/green]")
         return
 
-    console.print(f"[green]Successfully deployed {len(seeds)} unique seed(s) to {question_xml}[/green]")
+    first_err = res.get("first_error") or "Failed to generate any error-free seeds."
+    _handle_cli_cas_error(
+        first_err,
+        xml_str=xml_str,
+        engine=engine,
+        api_xml=api_xml,
+        as_json=as_json,
+        probed_errors=res.get("probed_errors"),
+    )
 
 
 @app.command("add-test")
@@ -660,7 +806,10 @@ def add_test(
             elif provisional_seed is None:
                 provisional_seed = 1
             api_xml, eff_seed, _ = prepare_for_api(tmp_path.read_text(encoding="utf-8"), seed_override=provisional_seed)
-            test_res = engine.run_tests(api_xml)
+            try:
+                test_res = engine.run_tests(api_xml)
+            except StackEngineError as exc:
+                _handle_cli_cas_error(exc.message, xml_str=xml_str, engine=engine, api_xml=api_xml, seed=provisional_seed, as_json=as_json)
 
             # Extract actual outcomes
             results = test_res.get("results", {})
@@ -749,10 +898,47 @@ def test(
             for s_key, s_data in results.items():
                 p = s_data.get("passes", 0) or 0
                 fl = s_data.get("fails", 0) or 0
+                s_msg = s_data.get("messages", "") if isinstance(s_data, dict) else ""
+                has_msg_err = bool(s_msg and ("error" in s_msg.lower() or "must validate true before compiling" in s_msg))
+                if has_msg_err:
+                    fl += 1
                 total_passes += p
                 total_fails += fl
                 if fl > 0:
-                    failures.append({"file": str(f), "seed": s_key, "data": s_data})
+                    fail_entry: dict[str, Any] = {"file": str(f), "seed": s_key, "data": s_data}
+                    if has_msg_err:
+                        probed = None
+                        if "must validate true before compiling" in s_msg:
+                            try:
+                                v = engine.inspect_vars(api_xml, seed=seed)
+                                probed = v.get("probed_errors")
+                            except Exception:
+                                pass
+                        diags = parse_and_enrich_cas_errors(s_msg, xml_str=xml_str, probed_errors=probed, seed=seed)
+                        fail_entry["error"] = diags[0].message if diags else s_msg
+                        fail_entry["cas_errors"] = [d.to_dict() for d in diags]
+                    failures.append(fail_entry)
+        except StackEngineError as exc:
+            total_fails += 1
+            probed = None
+            if "must validate true before compiling" in exc.message:
+                try:
+                    v = engine.inspect_vars(api_xml, seed=seed)
+                    probed = v.get("probed_errors")
+                except Exception:
+                    pass
+            diags = parse_and_enrich_cas_errors(
+                exc.message,
+                xml_str=xml_str,
+                probed_errors=probed,
+                seed=seed,
+            )
+            err_msg = diags[0].message if diags else exc.message
+            failures.append({
+                "file": str(f),
+                "error": err_msg,
+                "cas_errors": [d.to_dict() for d in diags],
+            })
         except Exception as e:
             total_fails += 1
             failures.append({"file": str(f), "error": str(e)})

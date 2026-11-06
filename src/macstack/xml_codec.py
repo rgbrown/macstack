@@ -245,6 +245,52 @@ def parse_question_summary(xml_path_or_str: Path | str) -> QuestionSummary:
     )
 
 
+def extract_question_fields(xml_path_or_str: Path | str) -> dict[str, str]:
+    """Safely extract raw text of all CAS and CASText fields from a STACK question.
+
+    Returns a mapping of canonical field keys to their raw extracted text strings.
+    If the XML is invalid or contains no <question type="stack">, an empty dict is returned.
+    """
+    try:
+        root, _ = _get_xml_root(xml_path_or_str)
+        q = find_stack_question(root)
+        if q is None:
+            return {}
+    except Exception:
+        return {}
+
+    def _field_text(parent: etree._Element, path: str) -> str:
+        elem = parent.find(path)
+        if elem is not None:
+            return _extract_element_text(elem)
+        if path.endswith("/text"):
+            fallback_elem = parent.find(path[:-5])
+            if fallback_elem is not None:
+                return _extract_element_text(fallback_elem)
+        return ""
+
+    fields: dict[str, str] = {
+        "questionvariables": _field_text(q, "./questionvariables/text"),
+        "questiontext": _field_text(q, "./questiontext/text"),
+        "generalfeedback": _field_text(q, "./generalfeedback/text"),
+        "specificfeedback": _field_text(q, "./specificfeedback/text"),
+        "questionnote": _field_text(q, "./questionnote/text"),
+    }
+
+    for prt in q.findall("./prt"):
+        prt_name = (prt.findtext("./name") or prt.get("name") or "").strip()
+        fields[f"prt:{prt_name}:feedbackvariables"] = _field_text(prt, "./feedbackvariables/text")
+        for idx, node in enumerate(prt.findall("./node")):
+            node_name = (node.findtext("./name") or str(idx)).strip()
+            fields[f"prt:{prt_name}:node:{node_name}:sans"] = _field_text(node, "./sans")
+            fields[f"prt:{prt_name}:node:{node_name}:tans"] = _field_text(node, "./tans")
+            fields[f"prt:{prt_name}:node:{node_name}:testoptions"] = _field_text(node, "./testoptions")
+            fields[f"prt:{prt_name}:node:{node_name}:truefeedback"] = _field_text(node, "./truefeedback/text")
+            fields[f"prt:{prt_name}:node:{node_name}:falsefeedback"] = _field_text(node, "./falsefeedback/text")
+
+    return fields
+
+
 def split_bank(export_xml: Path, out_dir: Path) -> tuple[CourseConfig, list[Path]]:
     """Split a monolithic Moodle XML export into modular files organized by category.
     
