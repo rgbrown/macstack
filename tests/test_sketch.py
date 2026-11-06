@@ -834,3 +834,88 @@ def test_sketch_file_and_apply_text_to_file(tmp_path: Path, demo_config: CourseC
     # Second apply without changes returns False
     changed_again = apply_text_to_file(sketch_str, target_file, demo_config)
     assert changed_again is False
+
+
+def test_answer_test_moodle_aliases_suggestions() -> None:
+    """Moodle UI dropdown labels and aliases suggest the canonical STACK answer test."""
+    cases = [
+        ("CompletedSquare", "CompSquare", "Moodle UI dropdown label"),
+        ("Num-GT", "GT", "Moodle UI dropdown label"),
+        ("UnitsSigFigs", "Units", "Moodle UI dropdown label"),
+        ("StrictSigFigs", "SigFigsStrict", "STACK documentation alias"),
+    ]
+    for alias, canonical, reason in cases:
+        sketch = f"""+++
+name = "Test"
++++
+
+## PRT prt1
+node 0: {alias}(ans1, ta1)
+  true: =1
+"""
+        with pytest.raises(SketchError) as exc_info:
+            parse_sketch(sketch)
+        msg = exc_info.value.message
+        assert f"unknown answer test '{alias}'" in msg
+        assert f"did you mean '{canonical}'?" in msg
+        assert reason in msg
+
+
+def test_antidiff_and_addconst_roundtrip(demo_config: CourseConfig) -> None:
+    """Antidiff and AddConst answer tests parse, serialize, and round-trip cleanly."""
+    sketch = """+++
+name = "Calculus Tests"
+idnumber = "calc-roundtrip"
++++
+
+## Question variables
+```maxima
+ta1: x^2/2;
+```
+
+## Question text
+Antiderivative: [[input:ans1]] [[validation:ans1]]
+[[feedback:prt1]]
+[[feedback:prt2]]
+
+## Specific feedback
+[[feedback:prt1]]
+[[feedback:prt2]]
+
+## Inputs
+ans1: algebraic, tans=ta1
+
+## PRT prt1
+node 0: Antidiff(ans1, ta1, x)
+  true: =1 -> end
+  false: =0 -> end
+
+## PRT prt2
+node 0: AddConst(ans1, ta1, [x])
+  true: =1 -> end
+  false: =0 -> end
+"""
+    model = parse_sketch(sketch)
+    assert len(model.prts) == 2
+    assert model.prts[0].nodes[0].answertest == "Antidiff"
+    assert model.prts[0].nodes[0].testoptions == "x"
+    assert model.prts[1].nodes[0].answertest == "AddConst"
+    assert model.prts[1].nodes[0].testoptions == "[x]"
+
+    xml = apply_sketch(model, None, demo_config, category_id="calculus")
+    root = etree.fromstring(xml.encode("utf-8"))
+    nodes = root.findall(".//question[@type='stack']/prt/node")
+    assert len(nodes) == 2
+    assert nodes[0].findtext("answertest") == "Antidiff"
+    assert nodes[0].findtext("testoptions") == "x"
+    assert nodes[1].findtext("answertest") == "AddConst"
+    assert nodes[1].findtext("testoptions") == "[x]"
+
+    sketch2 = xml_to_sketch(xml, demo_config)
+    assert "node 0: Antidiff(ans1, ta1, x)" in sketch2
+    assert "node 0: AddConst(ans1, ta1, [x])" in sketch2
+
+    model2 = parse_sketch(sketch2)
+    assert model2.prts[0].nodes[0].answertest == "Antidiff"
+    assert model2.prts[1].nodes[0].answertest == "AddConst"
+

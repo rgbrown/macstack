@@ -262,9 +262,11 @@ diff_ans: diff(ans1, x);
 node <id>: <AnswerTest>(<sans>, <tans>[, <testoptions>])
 ```
 - `<id>`: Unique node name within the PRT (typically integer `0`, `1`, `2`, ...).
-- `<AnswerTest>`: STACK answer test. Validated against known tests:
-  `AlgEquiv`, `AlgEquivNouns`, `EqualComAss`, `EqualComAssRules`, `CasEqual`, `SameType`, `SubstEquiv`, `SysEquiv`, `Sets`, `Expanded`, `FacForm`, `SingleFrac`, `PartFrac`, `CompSquare`, `PropLogic`, `Equiv`, `EquivFirst`, `Diff`, `Int`, `GT`, `GTE`, `NumAbsolute`, `NumRelative`, `NumSigFigs`, `NumDecPlaces`, `NumDecPlacesWrong`, `SigFigsStrict`, `Units`, `UnitsStrict`, `UnitsAbsolute`, `UnitsStrictAbsolute`, `UnitsRelative`, `UnitsStrictRelative`, `String`, `StringSloppy`, `Levenshtein`, `SRegExp`, `LowestTerms`, `Validator`.
-  *(Typo detection provides helpful suggestions on unrecognized names, e.g. `AlgEquv` $\rightarrow$ `AlgEquiv`).*
+- `<AnswerTest>`: STACK answer test. Validated against known tests (all 41 supported in STACK v4.11):
+  `AlgEquiv`, `AlgEquivNouns`, `EqualComAss`, `EqualComAssRules`, `CasEqual`, `SameType`, `SubstEquiv`, `SysEquiv`, `Sets`, `Expanded`, `FacForm`, `SingleFrac`, `PartFrac`, `CompSquare`, `PropLogic`, `Equiv`, `EquivFirst`, `Diff`, `Int`, `Antidiff`, `AddConst`, `GT`, `GTE`, `NumAbsolute`, `NumRelative`, `NumSigFigs`, `NumDecPlaces`, `NumDecPlacesWrong`, `SigFigsStrict`, `Units`, `UnitsStrict`, `UnitsAbsolute`, `UnitsStrictAbsolute`, `UnitsRelative`, `UnitsStrictRelative`, `String`, `StringSloppy`, `Levenshtein`, `SRegExp`, `LowestTerms`, `Validator`.
+  *(Typo detection provides helpful suggestions on unrecognized names, e.g. `AlgEquv` $\rightarrow$ `AlgEquiv`, `CompletedSquare` $\rightarrow$ `CompSquare`).*
+  
+  For complete documentation of test signatures, option lists, PRT design recipes, and common pitfalls, see the [STACK Question Sketch Authoring Guide & Answer Test Glossary](../../../../docs/sketch-authoring-guide.md).
 - `<sans>`: Student answer expression or input variable name (e.g. `ans1`).
 - `<tans>`: Teacher answer expression or variable (e.g. `ta1`).
 - `<testoptions>`: Optional arguments (everything following the 2nd top-level comma).

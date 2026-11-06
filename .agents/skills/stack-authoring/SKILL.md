@@ -1,11 +1,11 @@
 ---
 name: stack-authoring
-description: Use when creating, editing, debugging, converting, testing, linting, or bundling Moodle STACK math questions or Moodle XML question banks. Covers authoring Maxima question variables, CASText2, PRTs (Potential Response Trees), input widgets, question test suites (<qtest>), deployed random seeds, and Massey Stream packaging.
+description: Use when creating, editing, debugging, converting, testing, linting, or bundling Moodle STACK math questions or Moodle XML question banks. Covers authoring Maxima question variables, CASText2, PRTs (Potential Response Trees), input widgets, question test suites (<qtest>), deployed random seeds, and Moodle packaging.
 ---
 
 # STACK Question Authoring with `macstack`
 
-This skill provides an authoritative, end-to-end workflow for authoring, verifying, testing, and packaging computer-aided assessment questions for the **Moodle STACK** engine (as used at Massey University Stream and other institutions).
+This skill provides an authoritative, end-to-end workflow for authoring, verifying, testing, and packaging computer-aided assessment questions for the **Moodle STACK** engine.
 
 ---
 
@@ -21,8 +21,8 @@ cat macstack.toml 2>/dev/null || true
 
 Standard workspace conventions:
 - **Questions**: Plain-text XML files located at `questions/<category-slug>/<idnumber>.xml` (e.g. `questions/w01/w01-add-fractions.xml`).
-- **Configuration**: `macstack.toml` sets the default Stream category prefix, default Maxima timeout, and local dev preview port.
-- **Single Question XML**: Each question `.xml` file contains its parent `<question type="category">` tag, making it self-contained and immediately importable into Moodle/Stream on its own.
+- **Configuration**: `macstack.toml` sets the default Moodle category prefix, default Maxima timeout, and local dev preview port.
+- **Single Question XML**: Each question `.xml` file contains its parent `<question type="category">` tag, making it self-contained and immediately importable into Moodle on its own.
 
 ---
 
@@ -144,10 +144,20 @@ While STACK XML remains the canonical source of truth for repository storage and
   ```
   `apply` validates answer test names, branch targets, and input options before updating the XML, while preserving all categories, deployed seeds, and unmodelled XML elements.
 
+- **Terminal Quick Reference (`macstack ref`)**:
+  Look up PRT branch syntax, input options, and all 41 answer test signatures without leaving the terminal:
+  ```bash
+  macstack ref prt          # PRT branch syntax, score modes, modifiers
+  macstack ref inputs       # Input widgets, boxsize, options
+  macstack ref tests        # All 41 answer tests grouped by category
+  macstack ref Int          # Detailed signature and options for Int
+  ```
+
 > **Note**: Always maintain XML-first fidelity. The XML file is the canonical source of truth; sketches are ephemeral authoring and review views.
 
-For full format syntax, grammar rules, and the interactive `macstack edit` watch-session workflow, consult:
-[STACK Question Sketch Format Reference](./references/sketch-format.md)
+For full format syntax, grammar rules, PRT design recipes, and the complete Answer Tests glossary, consult:
+- [STACK Question Sketch Authoring Guide & Answer Test Glossary](../../../docs/sketch-authoring-guide.md)
+- [STACK Question Sketch Format Reference](./references/sketch-format.md)
 
 ---
 
@@ -238,7 +248,7 @@ Key workbench features:
 
 ---
 
-## 7. Packaging for Massey Stream / Moodle
+## 7. Packaging for Moodle
 
 ### Single Question Import
 Because each XML file formatted by `macstack` includes its category path header, you can upload any single `.xml` directly to Moodle:
@@ -257,5 +267,6 @@ macstack bundle questions/w01/ -o dist/week-01-all-questions.xml
 
 ## Reference Guides
 For deep syntax rules on Maxima functions, `simp:false` patterns, CASText2 tokens, input types, and PRT answer tests, consult:
+- [STACK Question Sketch Authoring Guide & Answer Test Glossary](../../../docs/sketch-authoring-guide.md)
 - [STACK XML and Maxima Reference Guide](./references/stack-xml-and-maxima-guide.md)
 - [STACK Question Sketch Format Reference](./references/sketch-format.md)

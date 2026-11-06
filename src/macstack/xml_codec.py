@@ -512,7 +512,7 @@ def _ensure_simple_subelement(parent: etree._Element, tag: str, default_val: str
 
 
 def normalize_question_xml(xml_str: str, config: CourseConfig, category_id: str | None = None) -> str:
-    """Normalize a minimal or author-drafted STACK question XML into complete, valid Stream XML.
+    """Normalize a minimal or author-drafted STACK question XML into complete, valid Moodle XML.
     
     Fills in missing defaults, adds category headers, and preserves all existing tags and data.
     """

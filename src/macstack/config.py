@@ -30,7 +30,7 @@ class CategorySpec:
 
 @dataclass
 class CourseConfig:
-    """Configuration for a course question bank matching Stream/Moodle STACK conventions."""
+    """Configuration for a course question bank matching Moodle STACK conventions."""
     stack_version: str = "2025102100"
     root_category: str = "$course$/top/Inline questions"
     questions_dir: str = "questions"

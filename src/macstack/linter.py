@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 from lxml import etree
 
+from macstack.ref import ANSWER_TEST_BY_NAME
+
 
 @dataclass
 class LintIssue:
@@ -306,6 +308,58 @@ def lint_question(xml_path_or_str: Path | str) -> list[LintIssue]:
             n_name = (node.findtext("./name") or "").strip()
             truenext = (node.findtext("./truenextnode") or "-1").strip()
             falsenext = (node.findtext("./falsenextnode") or "-1").strip()
+            answertest = (node.findtext("./answertest") or "").strip()
+            sans = (node.findtext("./sans") or "").strip()
+            tans = (node.findtext("./tans") or "").strip()
+            testoptions = (node.findtext("./testoptions") or "").strip()
+
+            if answertest in ANSWER_TEST_BY_NAME:
+                spec = ANSWER_TEST_BY_NAME[answertest]
+                node_field = f"prt:{prt_name}:node:{n_name}"
+
+                # 1. missing-test-options (error)
+                if spec.options_status == "required" and not testoptions:
+                    issues.append(
+                        LintIssue(
+                            severity="error",
+                            code="missing-test-options",
+                            message=f"PRT '{prt_name}' node '{n_name}' uses '{answertest}', which requires testoptions ({spec.options_syntax})",
+                            field=node_field,
+                        )
+                    )
+
+                # 2. unexpected-test-options (warning)
+                if spec.options_status == "none" and bool(testoptions):
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="unexpected-test-options",
+                            message=f"PRT '{prt_name}' node '{n_name}' passes testoptions {testoptions!r} to '{answertest}', which does not accept options",
+                            field=node_field,
+                        )
+                    )
+
+                # 3. raw-input-required (warning)
+                if spec.requires_raw_sans and defined_inputs and sans not in defined_inputs:
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="raw-input-required",
+                            message=f"PRT '{prt_name}' node '{n_name}' uses '{answertest}', which requires a raw input variable in <sans> (got {sans!r}); Maxima expressions strip trailing zeros",
+                            field=node_field,
+                        )
+                    )
+
+                # 4. tans-ignored-single-node (warning)
+                if len(nodes) == 1 and spec.ignores_tans and answertest != "Validator":
+                    issues.append(
+                        LintIssue(
+                            severity="warning",
+                            code="tans-ignored-single-node",
+                            message=f"PRT '{prt_name}' only runs '{answertest}', which ignores <tans> and does not check equivalence on its own (pair with AlgEquiv or another test)",
+                            field=node_field,
+                        )
+                    )
 
             if truenext != "-1":
                 if truenext not in node_names_set:

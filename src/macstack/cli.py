@@ -314,7 +314,7 @@ def scaffold_new_question(
 def new(
     target: str = typer.Argument(..., help="Target question path or idnumber"),
     name: str = typer.Option("", "--name", "-n", help="Human-readable question name"),
-    category: str = typer.Option("", "--category", "-c", help="Stream/Moodle category path"),
+    category: str = typer.Option("", "--category", "-c", help="Moodle category path"),
 ) -> None:
     """Scaffold a new STACK question XML with full category headers and defaults."""
     target_path = scaffold_new_question(target, name=name, category=category)
@@ -997,6 +997,17 @@ def maxima(
         print(output)
     else:
         sys.exit(launch_repl(question_xml=xml_content, seed=seed))
+
+
+@app.command()
+def ref(
+    query: list[str] = typer.Argument(None, help="Topic (prt, tests, inputs, frontmatter, castext), category, test name, or search query"),
+    as_json: bool = typer.Option(False, "--json", help="Output machine-readable JSON reference data"),
+) -> None:
+    """STACK authoring reference catalog: answer tests, inputs, PRT syntax, and options."""
+    from macstack.ref import render_ref_cli
+
+    render_ref_cli(query=query, as_json=as_json, console=console)
 
 
 @app.command()

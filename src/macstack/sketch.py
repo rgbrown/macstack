@@ -32,6 +32,7 @@ import tomli_w
 from lxml import etree
 
 from macstack.config import CourseConfig, find_course_config
+from macstack.ref import ANSWER_TEST_ALIASES, ANSWER_TESTS
 from macstack.xml_codec import (
     INPUT_TAG_ORDER,
     NODE_TAG_ORDER,
@@ -91,16 +92,7 @@ _TEXT_HEADING_TO_TAG = {h.lower(): t for h, t in TEXT_SECTIONS}
 INPUT_KEYS = [t for t in INPUT_TAG_ORDER if t not in ("name", "type")]
 PRT_KEYS = ["value", "autosimplify", "feedbackstyle"]
 
-#: Answer tests supported by STACK (used to catch typos early).
-ANSWER_TESTS = {
-    "AlgEquiv", "AlgEquivNouns", "EqualComAss", "EqualComAssRules", "CasEqual",
-    "SameType", "SubstEquiv", "SysEquiv", "Sets", "Expanded", "FacForm",
-    "SingleFrac", "PartFrac", "CompSquare", "PropLogic", "Equiv", "EquivFirst",
-    "Diff", "Int", "GT", "GTE", "NumAbsolute", "NumRelative", "NumSigFigs",
-    "NumDecPlaces", "NumDecPlacesWrong", "SigFigsStrict", "Units", "UnitsStrict",
-    "UnitsAbsolute", "UnitsStrictAbsolute", "UnitsRelative", "UnitsStrictRelative",
-    "String", "StringSloppy", "Levenshtein", "SRegExp", "LowestTerms", "Validator",
-}
+#: Answer tests supported by STACK (imported from macstack.ref).
 
 _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
 _FENCE_RE = re.compile(r"^\s*```")
@@ -693,7 +685,7 @@ def _parse_inputs(section: _Section) -> list[SketchInput]:
     return inputs
 
 
-_NODE_RE = re.compile(r"^node\s+(\S+?)\s*:\s*([A-Za-z]+)\s*\((.*)\)\s*$")
+_NODE_RE = re.compile(r"^node\s+(\S+?)\s*:\s*([A-Za-z][A-Za-z0-9_-]*)\s*\((.*)\)\s*$")
 _BRANCH_RE = re.compile(r"^(true|false)\s*:\s*(.*)$")
 
 
@@ -787,11 +779,17 @@ def _parse_prt(section: _Section, name: str) -> SketchPrt:
                 raise SketchError(lineno, "node needs at least (student answer, teacher answer)")
             test = m.group(2)
             if test not in ANSWER_TESTS:
-                import difflib
-                close = [t for t in ANSWER_TESTS if t.lower() == test.lower()]
-                if not close:
-                    close = difflib.get_close_matches(test, ANSWER_TESTS, n=1, cutoff=0.6)
-                hint = f" (did you mean {close[0]!r}?)" if close else ""
+                test_lower = test.lower()
+                if test_lower in ANSWER_TEST_ALIASES:
+                    canonical, reason = ANSWER_TEST_ALIASES[test_lower]
+                    hint = f" (did you mean {canonical!r}? {reason})"
+                else:
+                    import difflib
+
+                    close = [t for t in ANSWER_TESTS if t.lower() == test_lower]
+                    if not close:
+                        close = difflib.get_close_matches(test, ANSWER_TESTS, n=1, cutoff=0.6)
+                    hint = f" (did you mean {close[0]!r}?)" if close else ""
                 raise SketchError(lineno, f"unknown answer test {test!r}{hint}")
             opts = m.group(3)[args[2][0]:].strip() if len(args) > 2 else ""
             node = SketchNode(

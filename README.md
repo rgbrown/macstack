@@ -2,18 +2,18 @@
 
 > **Status: Alpha** — Under active development and testing.
 
-**macstack** is a local plain-text authoring, testing, live-reload preview workbench, and Maxima CAS toolkit for Moodle STACK math questions, designed for university educators (including Massey University Stream).
+**macstack** is a local plain-text authoring, testing, live-reload preview workbench, and Maxima CAS toolkit for Moodle STACK math questions, designed for university educators.
 
 ---
 
 ## Key Features
 
 - **Plain-Text XML Authoring**: Author questions in your favorite editor (VS Code, Cursor, Neovim) without navigating complex Moodle web forms.
-- **Instant Live-Reload Workbench**: Interactive split-pane browser environment with authentic Moodle/Stream fidelity, MathJax 3 rendering, and SSE hot reload on file save.
+- **Instant Live-Reload Workbench**: Interactive split-pane browser environment with authentic Moodle fidelity, MathJax 3 rendering, and SSE hot reload on file save.
 - **Rigorous Verification & Quality Gates**: Command-line linter, CAS variable evaluator, PRT response grader, and `<qtest>` regression test runner across randomized variants.
 - **Seed Deployment**: One-command sampling and deduplication of 50+ random variants directly into `<deployedseed>` tags.
 - **Interactive Maxima REPL (`rmaxima`)**: Launch Maxima with STACK's evaluation environment and question variables pre-loaded for quick CAS debugging.
-- **Single-File & Bundle Stream Import**: Every XML file includes its parent category hierarchy for direct drag-and-drop import into Stream's Question Bank, or bundle an entire course/week in one step.
+- **Single-File & Bundle Moodle Import**: Every XML file includes its parent category hierarchy for direct drag-and-drop import into Moodle's Question Bank, or bundle an entire course/week in one step.
 - **Human-Readable Sketch Editing (`.stack.md`)**: Author questions in a concise, Markdown-shaped sketch format that hides default boilerplate (~30 lines vs ~230 lines of XML), paired with live watch-mode editing (`macstack edit`) that syncs back to canonical XML on save.
 - **AI Agent Skill**: Built-in `.agents/skills/stack-authoring/` empowering AI pair programmers to author and verify STACK questions adhering to best practices.
 
@@ -64,6 +64,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. As you edit
 | :--- | :--- | :--- |
 | `macstack new` | Scaffold a new STACK question XML with defaults | `macstack new questions/w01/q1.xml` |
 | `macstack edit` | Start live watch-mode editing session in any editor | `macstack edit questions/w01/q1.xml` |
+| `macstack ref` | Look up .stack.md syntax, PRT rules, and Answer Tests | `macstack ref Int` |
 | `macstack sketch` | Export question XML to human-readable `.stack.md` sketch | `macstack sketch questions/w01/q1.xml` |
 | `macstack apply` | Apply a `.stack.md` sketch back to question XML | `macstack apply q1.stack.md questions/w01/q1.xml` |
 | `macstack format` | Format XML, indent cleanly, and expand category headers | `macstack format questions/w01/q1.xml` |
@@ -101,7 +102,7 @@ The workbench (`src/macstack/web/`) provides a clean, academic-grade developer U
 
 Raw STACK XML files are verbose (~230 lines for a typical question, with ~30 lines carrying author decisions). The `.stack.md` sketch format provides a compact, human-readable view hiding course defaults while keeping the XML as the canonical source of truth:
 
-```markdown
+````markdown
 +++
 name = "Indefinite Integral of a Polynomial"
 idnumber = "demo-power-integral"
@@ -137,7 +138,7 @@ node 1: AlgEquiv(ans1, ans_diff)
 ### Test 1: Model Answer
 ans1 = ta1
 prt1 => 1, prt1-0-T
-```
+````
 
 ### Side-by-Side Live Edit & Preview Workflow
 
@@ -153,7 +154,9 @@ Run `macstack edit` alongside `macstack preview` for an instant feedback loop:
    ```
 3. **Save and preview**: Every time you save the sketch in your editor, `macstack edit` validates syntax and synchronizes changes back to the XML. The browser workbench reloads instantly via Server-Sent Events (SSE). If a parse error occurs, the line-numbered error is shown in the terminal while your XML remains untouched.
 
-For the full format specification, see the [STACK Question Sketch Format Reference](./.agents/skills/stack-authoring/references/sketch-format.md).
+For an instructor-friendly, practical guide covering PRT design recipes, input widgets, and a comprehensive glossary of all 41 answer tests, see the [Sketch Authoring Guide & Answer Test Glossary](./docs/sketch-authoring-guide.md). You can also look up quick syntax and test cards in the terminal anytime using `macstack ref` (e.g. `macstack ref prt`, `macstack ref inputs`, `macstack ref Int`).
+
+For the underlying format specification, see the [STACK Question Sketch Format Reference](./.agents/skills/stack-authoring/references/sketch-format.md).
 
 ---
 
@@ -169,11 +172,11 @@ This starts `rmaxima` (with arrow-key history support) and pre-populates all var
 
 ---
 
-## Stream / Moodle Upload Workflow
+## Moodle Upload Workflow
 
 ### 1. Single Question Upload
 Because each XML file formatted by `macstack` includes its full category path chain (e.g. `$course$/top/MATH101/Week 1`), you can upload any single `.xml` directly to Moodle without extra configuration:
-1. Navigate to **Course $\rightarrow$ Question Bank $\rightarrow$ Import** in Stream.
+1. Navigate to **Course $\rightarrow$ Question Bank $\rightarrow$ Import** in Moodle.
 2. Select **Moodle XML format**.
 3. Drag and drop `questions/w01/w01-add-fractions.xml` into the upload box and click **Import**.
 

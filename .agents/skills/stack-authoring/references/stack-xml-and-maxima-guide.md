@@ -122,34 +122,65 @@ Renders an editable $M \times N$ matrix grid.
 ```
 
 ### 4. `dropdown`
-Drop-down menu choice.
+Drop-down menu choice (single selection). Choices are defined in `<questionvariables>` as a list of `[[value, correct_boolean, "Display Label"], ...]` tuples passed to `<tans>`. The student's answer `ans1` evaluates to the chosen value.
+```maxima
+/* In <questionvariables>: */
+ta_choices: [
+  [1, true, "Converges absolutely"],
+  [2, false, "Converges conditionally"],
+  [3, false, "Diverges"]
+];
+correct_val: 1;
+```
 ```xml
 <input name="ans1">
   <type>dropdown</type>
-  <tans>correct_choice</tans>
-  <options>[["opt1", "Option A"], ["opt2", "Option B"], ["opt3", "Option C"]]</options>
+  <tans>ta_choices</tans>
+  <boxsize>15</boxsize>
 </input>
 ```
+*In the PRT, test `sans=ans1` against `tans=correct_val` using `AlgEquiv`.*
 
 ### 5. `radio`
-Radio button group (single selection).
+Radio button group (single selection). Like `dropdown`, choices are defined in `<questionvariables>` and passed to `<tans>`. The student's answer `ans1` evaluates to the selected option's value.
+```maxima
+/* In <questionvariables>: */
+scenario: rand([1, 2, 3]);
+ta_radio: [
+  [1, is(scenario = 1), "Local minimum"],
+  [2, is(scenario = 2), "Local maximum"],
+  [3, is(scenario = 3), "Point of inflection"]
+];
+correct_val: scenario;
+```
 ```xml
 <input name="ans1">
   <type>radio</type>
-  <tans>correct_key</tans>
-  <options>[["A", "Local minimum"], ["B", "Local maximum"], ["C", "Inflection point"]]</options>
+  <tans>ta_radio</tans>
+  <boxsize>15</boxsize>
 </input>
 ```
+*In the PRT, test `sans=ans1` against `tans=correct_val` using `AlgEquiv`.*
 
 ### 6. `checkbox`
-Multiple-selection checkboxes. In STACK, answers are mapped to indexed booleans (`ans1_1`, `ans1_2`, etc.).
+Multiple-selection checkboxes. Choices are defined in `<questionvariables>` and passed to `<tans>`. When submitted, `ans1` evaluates to a **Maxima list** of selected values (e.g. `["A", "C"]`).
+```maxima
+/* In <questionvariables>: */
+ta_checkbox: [
+  ["A", true, "Continuous everywhere"],
+  ["B", false, "Differentiable at x = 0"],
+  ["C", true, "Bounded on [0, 1]"]
+];
+correct_selection: ["A", "C"];
+```
 ```xml
 <input name="ans1">
   <type>checkbox</type>
-  <tans>["A", "C"]</tans>
-  <options>[["A", "Odd function"], ["B", "Periodic"], ["C", "Continuous everywhere"]]</options>
+  <tans>ta_checkbox</tans>
+  <boxsize>15</boxsize>
 </input>
 ```
+*In the PRT, test `sans=ans1` against `tans=correct_selection` using `AlgEquiv` or `Sets`.*
 
 ---
 
