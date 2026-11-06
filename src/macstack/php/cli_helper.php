@@ -294,6 +294,16 @@ function macstack_handle_grade(array $data) {
             if ($input->get_extra_option('allowempty') && !array_key_exists($name, $answers)) {
                 $answers[$name] = '';
             }
+            if (method_exists($input, 'maxima_to_response_array') && isset($answers[$name]) && !isset($answers[$name . '_sub_0_0'])) {
+                try {
+                    $expanded = $input->maxima_to_response_array($answers[$name]);
+                    if (is_array($expanded)) {
+                        $answers = array_merge($answers, $expanded);
+                    }
+                } catch (\Throwable $e) {
+                    // Ignore, let STACK handle
+                }
+            }
         }
 
         $plots = [];

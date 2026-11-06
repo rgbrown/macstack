@@ -544,38 +544,19 @@
           bracketClass = 'matrix-bracket-round';
         }
 
-        // Detect 0-based vs 1-based indexing from samplesolution keys if available
-        let rowStart = 0;
-        let colStart = 0;
-        const sampleKeys = Object.keys(inputDef.samplesolution || {});
-        for (const k of sampleKeys) {
-          const match = k.match(new RegExp(`^(?:${name})?_sub_(\\d+)_(\\d+)$`));
-          if (match) {
-            const r = parseInt(match[1], 10);
-            const c = parseInt(match[2], 10);
-            if (r === 1 || c === 1) {
-              rowStart = 1;
-              colStart = 1;
-              break;
-            }
-          }
-        }
-
         let cellsHtml = `<div class="stack-matrix-container ${bracketClass}">`;
         cellsHtml += `<div class="matrix-grid" style="grid-template-columns: repeat(${cols}, auto);">`;
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const rowIdx = rowStart + r;
-            const colIdx = colStart + c;
-            const cellKey = `${name}_sub_${rowIdx}_${colIdx}`;
+            const cellKey = `${name}_sub_${r}_${c}`;
             cellsHtml += `
               <input type="text"
                      class="matrix-cell"
                      id="input-${cellKey}"
                      name="${cellKey}"
                      data-input-name="${name}"
-                     data-row="${rowIdx}"
-                     data-col="${colIdx}"
+                     data-row="${r}"
+                     data-col="${c}"
                      autocomplete="off"
                      spellcheck="false">
             `;
