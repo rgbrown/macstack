@@ -19,10 +19,12 @@ import uvicorn
 import watchfiles
 
 from macstack.config import find_course_config
-from macstack.engine import StackEngine
+from macstack.cas_errors import CasDiagnostic, parse_and_enrich_cas_errors
+from macstack.engine import StackEngine, StackEngineError
 from macstack.linter import lint_question
 from macstack.xml_codec import (
     extract_hints,
+    extract_question_fields,
     parse_question_summary,
     prepare_for_api,
     set_deployed_seeds,
@@ -151,16 +153,91 @@ def create_app(
                 seed_override = None
 
         xml_str = file_path.read_text(encoding="utf-8")
-        api_xml, effective_seed, had_deployed_seeds = prepare_for_api(
-            xml_str,
-            seed_override=seed_override,
-        )
+        fields = extract_question_fields(xml_str)
+        raw_qtext = fields.get("questiontext", "")
 
-        render_res = stack_engine.render(api_xml, seed=effective_seed, render_inputs="ans_")
-        vars_res = stack_engine.inspect_vars(api_xml, seed=effective_seed)
+        try:
+            api_xml, effective_seed, had_deployed_seeds = prepare_for_api(
+                xml_str,
+                seed_override=seed_override,
+            )
+            summary = parse_question_summary(file_path)
+        except Exception as xml_exc:
+            relpath = str(file_path.name)
+            try:
+                relpath = str(file_path.relative_to(root_dir))
+            except ValueError:
+                pass
+            return JSONResponse({
+                "summary": {
+                    "path": str(file_path),
+                    "relpath": relpath,
+                    "name": file_path.stem,
+                    "idnumber": file_path.stem,
+                    "category_path": "",
+                    "category_idnumber": "",
+                    "inputs": [],
+                    "input_types": {},
+                    "prts": [],
+                    "deployed_seeds": [],
+                    "qtest_count": 0,
+                    "uses_random": False,
+                    "has_plot": False,
+                    "hints_count": 0,
+                },
+                "effective_seed": seed_override or 1,
+                "had_deployed_seeds": False,
+                "render": {},
+                "render_failed": True,
+                "raw_questiontext": raw_qtext,
+                "cas_errors": [
+                    CasDiagnostic(
+                        field="xml",
+                        label="Question XML",
+                        message=str(xml_exc),
+                        seed=seed_override or 1,
+                    ).to_dict()
+                ],
+                "hints": [],
+                "vars": {"variables": [], "errors": ""},
+                "lint": [i.to_dict() for i in lint_question(file_path)],
+            })
+
+        render_failed = False
+        render_err_msg = ""
+        render_res: dict[str, Any] = {}
+        try:
+            render_res = stack_engine.render(api_xml, seed=effective_seed, render_inputs="ans_")
+        except StackEngineError as render_exc:
+            render_failed = True
+            render_res = {}
+            render_err_msg = render_exc.message
+
+        try:
+            vars_res = stack_engine.inspect_vars(api_xml, seed=effective_seed)
+        except StackEngineError as vars_exc:
+            vars_res = {
+                "seed": effective_seed,
+                "questionnote": "",
+                "variables": [],
+                "inputs": {},
+                "errors": vars_exc.message,
+                "probed_errors": [],
+            }
+
+        raw_errs = [e for e in [render_err_msg, vars_res.get("errors", "")] if e]
+        probed_errors = vars_res.get("probed_errors") or []
+        cas_diagnostics: list[CasDiagnostic] = []
+        if render_failed or raw_errs or probed_errors:
+            cas_diagnostics = parse_and_enrich_cas_errors(
+                raw_errs,
+                xml_str=xml_str,
+                probed_errors=probed_errors,
+                seed=effective_seed,
+            )
+
         lint_issues = lint_question(file_path)
         hints = extract_hints(xml_str)
-        summary = parse_question_summary(file_path)
 
         summary_dict = asdict(summary)
         summary_dict["path"] = str(file_path)
@@ -174,6 +251,9 @@ def create_app(
             "effective_seed": effective_seed,
             "had_deployed_seeds": had_deployed_seeds,
             "render": render_res,
+            "render_failed": render_failed,
+            "raw_questiontext": raw_qtext,
+            "cas_errors": [d.to_dict() for d in cas_diagnostics],
             "hints": hints,
             "vars": vars_res,
             "lint": [i.to_dict() for i in lint_issues],
@@ -193,15 +273,22 @@ def create_app(
         xml_str = file_path.read_text(encoding="utf-8")
         api_xml, effective_seed, _ = prepare_for_api(xml_str, seed_override=seed)
 
-        res = stack_engine.validate(
-            api_xml,
-            input_name=input_name,
-            answers=answers,
-            seed=effective_seed,
-        )
-
-        validation_html = res.get("Validation", res.get("validation", ""))
-        return JSONResponse({"validation": validation_html, **res})
+        try:
+            res = stack_engine.validate(
+                api_xml,
+                input_name=input_name,
+                answers=answers,
+                seed=effective_seed,
+            )
+            validation_html = res.get("Validation", res.get("validation", ""))
+            return JSONResponse({"validation": validation_html, **res})
+        except StackEngineError as exc:
+            diags = parse_and_enrich_cas_errors(exc.message, xml_str=xml_str, seed=effective_seed)
+            return JSONResponse({
+                "validation": "",
+                "error": exc.message,
+                "cas_errors": [d.to_dict() for d in diags],
+            })
 
     async def api_grade(request: Request) -> JSONResponse:
         body = await request.json()
@@ -216,7 +303,45 @@ def create_app(
         xml_str = file_path.read_text(encoding="utf-8")
         api_xml, effective_seed, _ = prepare_for_api(xml_str, seed_override=seed)
 
-        res = stack_engine.grade(api_xml, answers=answers, seed=effective_seed)
+        try:
+            res = stack_engine.grade(api_xml, answers=answers, seed=effective_seed)
+        except StackEngineError as exc:
+            diags = parse_and_enrich_cas_errors(exc.message, xml_str=xml_str, seed=effective_seed)
+            return JSONResponse({
+                "isgradable": False,
+                "has_prt_errors": False,
+                "has_cas_error": True,
+                "error": exc.message,
+                "cas_errors": [d.to_dict() for d in diags],
+            })
+
+        cas_diags: list[CasDiagnostic] = []
+        if res.get("has_cas_error"):
+            diags = parse_and_enrich_cas_errors(
+                res.get("error", ""),
+                xml_str=xml_str,
+                probed_errors=res.get("probed_errors"),
+                seed=effective_seed,
+            )
+            cas_diags.extend(diags)
+
+        if res.get("has_prt_errors") or res.get("prtresults"):
+            prtresults = res.get("prtresults") or {}
+            for prt_name, prt_res in prtresults.items():
+                if isinstance(prt_res, dict) and prt_res.get("errors"):
+                    prt_diags = parse_and_enrich_cas_errors(
+                        prt_res["errors"],
+                        xml_str=xml_str,
+                        probed_errors=res.get("probed_errors"),
+                        seed=effective_seed,
+                        default_field=f"prt:{prt_name}:feedbackvariables",
+                    )
+                    prt_res["diagnostics"] = [d.to_dict() for d in prt_diags]
+                    cas_diags.extend(prt_diags)
+
+        if cas_diags or "cas_errors" not in res:
+            res["cas_errors"] = [d.to_dict() for d in cas_diags]
+
         return JSONResponse(res)
 
     async def api_test(request: Request) -> JSONResponse:
@@ -229,8 +354,47 @@ def create_app(
         xml_str = file_path.read_text(encoding="utf-8")
         api_xml, _, _ = prepare_for_api(xml_str)
 
-        res = stack_engine.run_tests(api_xml)
-        return JSONResponse(res)
+        try:
+            res = stack_engine.run_tests(api_xml)
+            cas_diags: list[CasDiagnostic] = []
+            results = res.get("results") or {}
+            probed = None
+            for s_key, s_data in results.items():
+                if isinstance(s_data, dict):
+                    msg = s_data.get("messages", "")
+                    if "error" in msg.lower() or "must validate true before compiling" in msg:
+                        if "must validate true before compiling" in msg and probed is None:
+                            try:
+                                v = stack_engine.inspect_vars(api_xml)
+                                probed = v.get("probed_errors")
+                            except Exception:
+                                pass
+                        cas_diags.extend(parse_and_enrich_cas_errors(
+                            msg,
+                            xml_str=xml_str,
+                            probed_errors=probed,
+                        ))
+            if cas_diags:
+                res["cas_errors"] = [d.to_dict() for d in cas_diags]
+            return JSONResponse(res)
+        except StackEngineError as exc:
+            probed = None
+            if "must validate true before compiling" in exc.message:
+                try:
+                    v = stack_engine.inspect_vars(api_xml)
+                    probed = v.get("probed_errors")
+                except Exception:
+                    pass
+            diags = parse_and_enrich_cas_errors(
+                exc.message,
+                xml_str=xml_str,
+                probed_errors=probed,
+            )
+            return JSONResponse({
+                "error": exc.message,
+                "cas_errors": [d.to_dict() for d in diags],
+                "results": {},
+            })
 
     async def api_deploy_seeds(request: Request) -> JSONResponse:
         body = await request.json()
@@ -244,16 +408,41 @@ def create_app(
         xml_str = file_path.read_text(encoding="utf-8")
         api_xml, _, _ = prepare_for_api(xml_str)
 
-        res = stack_engine.deploy_seeds(api_xml, count=count)
+        try:
+            res = stack_engine.deploy_seeds(api_xml, count=count)
+        except StackEngineError as exc:
+            diags = parse_and_enrich_cas_errors(exc.message, xml_str=xml_str)
+            return JSONResponse({
+                "seeds": [],
+                "count": 0,
+                "variants": [],
+                "error": exc.message,
+                "cas_errors": [d.to_dict() for d in diags],
+            })
+
         seeds = res.get("seeds", [])
         if seeds:
             set_deployed_seeds(file_path, seeds)
-
-        return JSONResponse({
-            "seeds": seeds,
-            "count": len(seeds),
-            "variants": res.get("variants", []),
-        })
+            return JSONResponse({
+                "seeds": seeds,
+                "count": len(seeds),
+                "variants": res.get("variants", []),
+            })
+        else:
+            diags = parse_and_enrich_cas_errors(
+                res.get("first_error", ""),
+                xml_str=xml_str,
+                probed_errors=res.get("probed_errors"),
+                seed=1,
+            )
+            first_err_msg = diags[0].message if diags else (res.get("first_error") or "No valid error-free seeds could be generated.")
+            return JSONResponse({
+                "seeds": [],
+                "count": 0,
+                "variants": [],
+                "error": first_err_msg,
+                "cas_errors": [d.to_dict() for d in diags],
+            })
 
     async def handle_plot(request: Request) -> Response:
         filename = request.path_params.get("filename", "")

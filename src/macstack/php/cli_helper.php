@@ -55,6 +55,171 @@ function macstack_handle_request($uri) {
     }
 }
 
+function macstack_probe_xml_cas_errors(string $xml, $options = null, $seed = 1): array {
+    $probedErrors = [];
+    libxml_use_internal_errors(true);
+    $sxe = simplexml_load_string($xml);
+    if ($sxe === false) {
+        return $probedErrors;
+    }
+
+    $qNode = null;
+    if ($sxe->getName() === 'question' && (string)$sxe['type'] === 'stack') {
+        $qNode = $sxe;
+    } else {
+        $matches = $sxe->xpath("//question[@type='stack']");
+        if (!empty($matches)) {
+            $qNode = $matches[0];
+        }
+    }
+
+    if (!$qNode) {
+        return $probedErrors;
+    }
+
+    // Collect input names so PRT feedbackvariables and nodes know valid student inputs
+    $inputNames = [];
+    if (isset($qNode->input)) {
+        foreach ($qNode->input as $inp) {
+            $name = trim((string)$inp->name);
+            if ($name !== '') {
+                $inputNames[] = $name;
+            }
+        }
+    }
+
+    // Helper to extract line and col from error text
+    $extractCoords = function(string $err): array {
+        $line = null;
+        $col = null;
+        if (preg_match('/\(At about line\s+(\d+)\s+character\s+(\d+)\.?\)/i', $err, $m)) {
+            $line = (int)$m[1];
+            $col = (int)$m[2];
+        }
+        return [$line, $col];
+    };
+
+    // Helper to add probed error
+    $addError = function(string $field, string $msg) use (&$probedErrors, $extractCoords) {
+        $msg = trim($msg);
+        if ($msg === '') return;
+        list($line, $col) = $extractCoords($msg);
+        $probedErrors[] = [
+            "field" => $field,
+            "message" => $msg,
+            "line" => $line,
+            "col" => $col,
+        ];
+    };
+
+    // 1. Probe questionvariables
+    $qvars = isset($qNode->questionvariables->text) ? (string)$qNode->questionvariables->text : (string)($qNode->questionvariables ?? "");
+    if (trim($qvars) !== '') {
+        try {
+            $kv = new \stack_cas_keyval($qvars, $options, $seed, 'questionvariables');
+            if (!$kv->get_valid()) {
+                $errs = $kv->get_errors(false, 'strings');
+                foreach ($errs as $err) {
+                    $addError('questionvariables', (string)$err);
+                }
+            }
+        } catch (\Throwable $e) {
+            $addError('questionvariables', $e->getMessage());
+        }
+    }
+
+    // 2. Probe PRTs
+    if (isset($qNode->prt)) {
+        foreach ($qNode->prt as $prt) {
+            $prtName = trim((string)$prt->name);
+            if ($prtName === '' && isset($prt['name'])) {
+                $prtName = (string)$prt['name'];
+            }
+
+            // PRT feedbackvariables
+            $fbVars = isset($prt->feedbackvariables->text) ? (string)$prt->feedbackvariables->text : (string)($prt->feedbackvariables ?? "");
+            if (trim($fbVars) !== '') {
+                $fvField = "prt:{$prtName}:feedbackvariables";
+                try {
+                    $fkv = new \stack_cas_keyval($fbVars, $options, $seed, $fvField);
+                    if (!$fkv->get_valid($inputNames)) {
+                        $errs = $fkv->get_errors(false, 'strings');
+                        foreach ($errs as $err) {
+                            $addError($fvField, (string)$err);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $addError($fvField, $e->getMessage());
+                }
+            }
+
+            // PRT nodes
+            if (isset($prt->node)) {
+                $idx = 0;
+                foreach ($prt->node as $node) {
+                    $nodeName = trim((string)$node->name);
+                    if ($nodeName === '') {
+                        $nodeName = (string)$idx;
+                    }
+                    $idx++;
+
+                    // sans and tans
+                    foreach (['sans', 'tans'] as $sub) {
+                        $expr = trim((string)($node->$sub ?? ""));
+                        if ($expr !== '') {
+                            $nodeField = "prt:{$prtName}:node:{$nodeName}:{$sub}";
+                            try {
+                                $ast = \stack_ast_container_silent::make_from_teacher_source($expr, $nodeField);
+                                if (!$ast->get_valid()) {
+                                    $errs = $ast->get_errors();
+                                    if (is_array($errs)) {
+                                        foreach ($errs as $err) {
+                                            $addError($nodeField, (string)$err);
+                                        }
+                                    } else if (!empty($errs)) {
+                                        $addError($nodeField, (string)$errs);
+                                    }
+                                }
+                            } catch (\Throwable $e) {
+                                $addError($nodeField, $e->getMessage());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Probe CASText fields if probed_errors is empty or to catch CASText syntax errors
+    $ctFields = [
+        'questiontext' => isset($qNode->questiontext->text) ? (string)$qNode->questiontext->text : (string)($qNode->questiontext ?? ""),
+        'generalfeedback' => isset($qNode->generalfeedback->text) ? (string)$qNode->generalfeedback->text : (string)($qNode->generalfeedback ?? ""),
+        'specificfeedback' => isset($qNode->specificfeedback->text) ? (string)$qNode->specificfeedback->text : (string)($qNode->specificfeedback ?? ""),
+        'questionnote' => isset($qNode->questionnote->text) ? (string)$qNode->questionnote->text : (string)($qNode->questionnote ?? ""),
+    ];
+
+    foreach ($ctFields as $fName => $fText) {
+        if (trim($fText) === '') continue;
+        try {
+            $ct = \castext2_evaluatable::make_from_source($fText, $fName);
+            if (!$ct->get_valid()) {
+                $errs = $ct->get_errors(false);
+                if (is_array($errs)) {
+                    foreach ($errs as $err) {
+                        $addError($fName, (string)$err);
+                    }
+                } else if (!empty($errs)) {
+                    $addError($fName, (string)$errs);
+                }
+            }
+        } catch (\Throwable $e) {
+            $addError($fName, $e->getMessage());
+        }
+    }
+
+    return $probedErrors;
+}
+
 function macstack_handle_vars(array $data) {
     $xml = $data["questionDefinition"] ?? "";
     if (empty($xml)) {
@@ -63,12 +228,14 @@ function macstack_handle_vars(array $data) {
         exit(0);
     }
 
+    $seed = isset($data["seed"]) && $data["seed"] !== null ? (int)$data["seed"] : null;
+    $probedErrors = [];
+
     try {
         $loaded = StackQuestionLoader::loadxml($xml);
         /** @var \qtype_stack_question $question */
         $question = $loaded["question"];
 
-        $seed = isset($data["seed"]) && $data["seed"] !== null ? (int)$data["seed"] : null;
         if ($seed !== null) {
             $question->seed = $seed;
         } else if (!empty($question->deployedseeds)) {
@@ -84,19 +251,64 @@ function macstack_handle_vars(array $data) {
 
         // Extract variables using stack_cas_keyval
         $variables = [];
+        $qvarsRaw = $question->questionvariables ?? "";
         try {
-            $kv = new \stack_cas_keyval($question->questionvariables, $question->options, $question->seed);
-            $kv->get_valid();
-            $session = $kv->get_session();
-            $session->instantiate();
-            foreach ($session->get_session() as $stmt) {
-                if ($stmt instanceof \stack_ast_container) {
-                    $variables[] = [
-                        "name" => $stmt->get_key(),
-                        "expr" => $stmt->get_inputform(true),
-                        "value" => $stmt->get_value(),
-                        "display" => $stmt->get_display()
-                    ];
+            $kv = new \stack_cas_keyval($qvarsRaw, $question->options, $question->seed, 'questionvariables');
+            $isValid = $kv->get_valid();
+            if (!$isValid) {
+                $errList = $kv->get_errors(false, 'strings');
+                $errStr = implode("\n", $errList);
+                if (empty($errors)) {
+                    $errors = $errStr;
+                }
+                // Partial variable evaluation: if syntax error has line number, try prefix
+                if (preg_match('/\(At about line\s+(\d+)/i', $errStr, $mLine)) {
+                    $errLine = (int)$mLine[1];
+                    if ($errLine > 1) {
+                        $qvarsLines = explode("\n", $qvarsRaw);
+                        $prefixLines = array_slice($qvarsLines, 0, $errLine - 1);
+                        $prefixRaw = implode("\n", $prefixLines);
+                        if (trim($prefixRaw) !== '') {
+                            try {
+                                $prefixKv = new \stack_cas_keyval($prefixRaw, $question->options, $question->seed);
+                                if ($prefixKv->get_valid()) {
+                                    $pSession = $prefixKv->get_session();
+                                    $pSession->instantiate();
+                                    foreach ($pSession->get_session() as $stmt) {
+                                        if ($stmt instanceof \stack_ast_container) {
+                                            try {
+                                                if ($stmt->is_correctly_evaluated()) {
+                                                    $variables[] = [
+                                                        "name" => $stmt->get_key(),
+                                                        "expr" => $stmt->get_inputform(true),
+                                                        "value" => $stmt->get_value(),
+                                                        "display" => $stmt->get_display()
+                                                    ];
+                                                }
+                                            } catch (\Throwable $eStmt) {}
+                                        }
+                                    }
+                                }
+                            } catch (\Throwable $ePrefix) {}
+                        }
+                    }
+                }
+            } else {
+                $session = $kv->get_session();
+                $session->instantiate();
+                foreach ($session->get_session() as $stmt) {
+                    if ($stmt instanceof \stack_ast_container) {
+                        try {
+                            if ($stmt->is_correctly_evaluated()) {
+                                $variables[] = [
+                                    "name" => $stmt->get_key(),
+                                    "expr" => $stmt->get_inputform(true),
+                                    "value" => $stmt->get_value(),
+                                    "display" => $stmt->get_display()
+                                ];
+                            }
+                        } catch (\Throwable $eStmt) {}
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -105,18 +317,25 @@ function macstack_handle_vars(array $data) {
             }
         }
 
+        // If errors exist, probe xml for full diagnostics
+        if (!empty($errors)) {
+            $probedErrors = macstack_probe_xml_cas_errors($xml, $question->options ?? null, $question->seed);
+        }
+
         // Extract inputs
         $inputs = [];
         foreach ($question->inputs as $name => $input) {
-            $tavalue = $question->get_ta_for_input($name);
-            $state = $question->get_input_state($name, []);
-            $render = $input->render($state, "ans_" . $name, false, $tavalue);
-            $inputs[$name] = [
-                "tans" => $input->get_teacher_answer(),
-                "value" => $tavalue,
-                "api_solution" => $input->get_api_solution($tavalue),
-                "render" => $render
-            ];
+            try {
+                $tavalue = $question->get_ta_for_input($name);
+                $state = $question->get_input_state($name, []);
+                $render = $input->render($state, "ans_" . $name, false, $tavalue);
+                $inputs[$name] = [
+                    "tans" => $input->get_teacher_answer(),
+                    "value" => $tavalue,
+                    "api_solution" => $input->get_api_solution($tavalue),
+                    "render" => $render
+                ];
+            } catch (\Throwable $eInp) {}
         }
 
         echo json_encode([
@@ -124,17 +343,60 @@ function macstack_handle_vars(array $data) {
             "questionnote" => $note,
             "variables" => $variables,
             "inputs" => $inputs,
-            "errors" => $errors
+            "errors" => $errors,
+            "probed_errors" => $probedErrors
         ]);
         exit(0);
 
     } catch (\Throwable $e) {
+        $effSeed = $seed ?? 1;
+        $probedErrors = macstack_probe_xml_cas_errors($xml, null, $effSeed);
+
+        // Attempt to evaluate questionvariables even when loadxml failed
+        $fallbackVars = [];
+        try {
+            libxml_use_internal_errors(true);
+            $sxe = simplexml_load_string($xml);
+            if ($sxe !== false) {
+                $qNode = ($sxe->getName() === 'question' && (string)$sxe['type'] === 'stack')
+                    ? $sxe
+                    : ($sxe->xpath("//question[@type='stack']")[0] ?? null);
+                if ($qNode) {
+                    $rawQvars = isset($qNode->questionvariables->text)
+                        ? (string)$qNode->questionvariables->text
+                        : (string)($qNode->questionvariables ?? "");
+                    if (trim($rawQvars) !== '') {
+                        $kv = new \stack_cas_keyval($rawQvars, null, $effSeed, 'questionvariables');
+                        if ($kv->get_valid()) {
+                            $sess = $kv->get_session();
+                            $sess->instantiate();
+                            foreach ($sess->get_session() as $stmt) {
+                                if ($stmt instanceof \stack_ast_container) {
+                                    try {
+                                        if ($stmt->is_correctly_evaluated()) {
+                                            $fallbackVars[] = [
+                                                "name" => $stmt->get_key(),
+                                                "expr" => $stmt->get_inputform(true),
+                                                "value" => $stmt->get_value(),
+                                                "display" => $stmt->get_display()
+                                            ];
+                                        }
+                                    } catch (\Throwable $eStmt) {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $eFallback) {}
+
         echo json_encode([
-            "seed" => $data["seed"] ?? null,
+            "seed" => $effSeed,
             "questionnote" => "",
-            "variables" => [],
+            "variables" => $fallbackVars,
             "inputs" => (object)[],
-            "errors" => $e->getMessage()
+            "errors" => $e->getMessage(),
+            "probed_errors" => $probedErrors
         ]);
         exit(0);
     }
@@ -156,6 +418,7 @@ function macstack_handle_seeds(array $data) {
     $collectedSeeds = [];
     $variants = [];
     $attempts = 0;
+    $firstError = "";
 
     // First evaluate provided existing/input seeds
     foreach ($inputSeeds as $s) {
@@ -177,9 +440,15 @@ function macstack_handle_seeds(array $data) {
                         "questionnote" => $note
                     ];
                 }
+            } else {
+                if (empty($firstError)) {
+                    $firstError = implode("\n", array_keys($question->runtimeerrors));
+                }
             }
         } catch (\Throwable $e) {
-            // Skip invalid seeds
+            if (empty($firstError)) {
+                $firstError = $e->getMessage();
+            }
         }
         if (count($collectedSeeds) >= $targetCount) {
             break;
@@ -210,17 +479,30 @@ function macstack_handle_seeds(array $data) {
                         "questionnote" => $note
                     ];
                 }
+            } else {
+                if (empty($firstError)) {
+                    $firstError = implode("\n", array_keys($question->runtimeerrors));
+                }
             }
         } catch (\Throwable $e) {
-            // Skip
+            if (empty($firstError)) {
+                $firstError = $e->getMessage();
+            }
         }
+    }
+
+    $probedErrors = [];
+    if (count($collectedSeeds) === 0) {
+        $probedErrors = macstack_probe_xml_cas_errors($xml, null, 1);
     }
 
     echo json_encode([
         "seeds" => $collectedSeeds,
         "variants" => $variants,
         "count" => count($collectedSeeds),
-        "attempts" => $attempts
+        "attempts" => $attempts,
+        "first_error" => $firstError,
+        "probed_errors" => $probedErrors
     ]);
     exit(0);
 }
@@ -262,20 +544,26 @@ function macstack_handle_grade(array $data) {
         exit(0);
     }
 
+    $seed = isset($data["seed"]) && $data["seed"] !== null ? (int)$data["seed"] : null;
+
     try {
         $loaded = StackQuestionLoader::loadxml($xml);
         /** @var \qtype_stack_question $question */
         $question = $loaded["question"];
 
-        $seed = isset($data["seed"]) && $data["seed"] !== null ? (int)$data["seed"] : null;
         StackSeedHelper::initialize_seed($question, $seed);
         $question->initialise_question_from_seed();
 
         $question->castextprocessor = new \castext2_qa_processor(new \stack_outofcontext_process());
 
         if (!empty($question->runtimeerrors)) {
-            http_response_code(500);
-            echo json_encode(["error" => implode("\n", array_keys($question->runtimeerrors))]);
+            echo json_encode([
+                "isgradable" => false,
+                "has_prt_errors" => false,
+                "has_cas_error" => true,
+                "error" => implode("\n", array_keys($question->runtimeerrors)),
+                "probed_errors" => macstack_probe_xml_cas_errors($xml, $question->options ?? null, $question->seed ?? 1),
+            ]);
             exit(0);
         }
 
@@ -311,101 +599,178 @@ function macstack_handle_grade(array $data) {
         $scores = [];
         $prts = [];
         $prtresults = [];
+        $anyGradablePrt = false;
+        $hasPrtErrors = false;
 
         foreach ($question->prts as $index => $prt) {
-            $result = $question->get_prt_result($index, $answers, true);
+            $hasInputs = $question->has_necessary_prt_inputs($prt, $answers, true);
+            if (!$hasInputs) {
+                continue;
+            }
+            $anyGradablePrt = true;
 
-            if ($result->get_errors() || !$question->has_necessary_prt_inputs($prt, $answers, true)) {
-                echo json_encode([
-                    "isgradable" => false,
-                    "score" => null,
-                    "scores" => null,
-                    "scoreweights" => null,
-                    "specificfeedback" => null,
-                    "prts" => null,
-                    "prtresults" => null,
-                    "gradingassets" => null,
-                    "responsesummary" => null,
-                    "iframes" => null
-                ]);
-                exit(0);
+            $result = null;
+            $prtErrList = [];
+            try {
+                $result = $question->get_prt_result($index, $answers, true);
+                if ($result) {
+                    $rawErrs = $result->get_errors();
+                    if (!empty($rawErrs)) {
+                        $prtErrList = array_merge($prtErrList, is_array($rawErrs) ? $rawErrs : [$rawErrs]);
+                    }
+                    if (method_exists($result, 'get_fverrors')) {
+                        $fvErrs = $result->get_fverrors();
+                        if (!empty($fvErrs)) {
+                            $prtErrList = array_merge($prtErrList, is_array($fvErrs) ? $fvErrs : [$fvErrs]);
+                        }
+                    }
+                }
+            } catch (\Throwable $prtExc) {
+                $prtErrList = [$prtExc->getMessage()];
             }
 
-            $feedbackstyle = $prt->get_feedbackstyle();
-            $feedback = $result->apply_placeholder_holder($result->get_feedback());
-            $standardfeedback = macstack_standard_prt_feedback($question, $result, $feedbackstyle);
-
-            switch ($feedbackstyle) {
-                case 0:
-                    $overallfeedback = $feedback;
-                    break;
-                case 1:
-                case 2:
-                    $overallfeedback = $standardfeedback . $feedback;
-                    break;
-                case 3:
-                    $overallfeedback = $standardfeedback;
-                    break;
-                default:
-                    $overallfeedback = "Invalid Feedback style";
-                    break;
-            }
-
-            $scores[$index] = $result->get_score();
-            $prts[$index] = $translate->filter(
-                \stack_maths::process_display_castext($overallfeedback),
-                $language
-            );
-            StackPlotReplacer::replace_plots($plots, $prts[$index], "prt-" . $index, $storeprefix);
-
-            $rawNotes = $result->get_answernotes();
             $cleanNotes = [];
-            if (is_array($rawNotes)) {
-                foreach ($rawNotes as $n) {
-                    if ($n !== null && trim($n) !== '') {
-                        $cleanNotes[] = trim($n);
+            if ($result) {
+                $rawNotes = $result->get_answernotes();
+                if (is_array($rawNotes)) {
+                    foreach ($rawNotes as $n) {
+                        if ($n !== null && trim((string)$n) !== '') {
+                            $cleanNotes[] = trim((string)$n);
+                        }
                     }
                 }
             }
 
-            $rawTrace = $result->get_trace();
             $cleanTrace = [];
-            if (is_array($rawTrace)) {
-                foreach ($rawTrace as $t) {
-                    if ($t !== null && trim($t) !== '') {
-                        $cleanTrace[] = trim($t);
+            if ($result) {
+                $rawTrace = $result->get_trace();
+                if (is_array($rawTrace)) {
+                    foreach ($rawTrace as $t) {
+                        if ($t !== null && trim((string)$t) !== '') {
+                            $cleanTrace[] = trim((string)$t);
+                        }
                     }
                 }
             }
 
-            $prtresults[$index] = [
-                "name" => $index,
-                "score" => $result->get_score(),
-                "penalty" => $result->get_penalty(),
-                "answernotes" => $cleanNotes,
-                "trace" => $cleanTrace,
-                "errors" => implode("\n", $result->get_errors())
-            ];
+            if (!empty($prtErrList)) {
+                $hasPrtErrors = true;
+                $scores[$index] = null;
+                $prts[$index] = "";
+                $prtresults[$index] = [
+                    "name" => $index,
+                    "has_errors" => true,
+                    "score" => null,
+                    "penalty" => null,
+                    "answernotes" => $cleanNotes,
+                    "trace" => $cleanTrace,
+                    "errors" => is_array($prtErrList) ? implode("\n", $prtErrList) : (string)$prtErrList,
+                ];
+                continue;
+            }
+
+            try {
+                $feedbackstyle = $prt->get_feedbackstyle();
+                $feedback = $result->apply_placeholder_holder($result->get_feedback());
+                $standardfeedback = macstack_standard_prt_feedback($question, $result, $feedbackstyle);
+
+                switch ($feedbackstyle) {
+                    case 0:
+                        $overallfeedback = $feedback;
+                        break;
+                    case 1:
+                    case 2:
+                        $overallfeedback = $standardfeedback . $feedback;
+                        break;
+                    case 3:
+                        $overallfeedback = $standardfeedback;
+                        break;
+                    default:
+                        $overallfeedback = "Invalid Feedback style";
+                        break;
+                }
+
+                $scores[$index] = $result->get_score();
+                $prts[$index] = $translate->filter(
+                    \stack_maths::process_display_castext($overallfeedback),
+                    $language
+                );
+                StackPlotReplacer::replace_plots($plots, $prts[$index], "prt-" . $index, $storeprefix);
+
+                $prtresults[$index] = [
+                    "name" => $index,
+                    "score" => $result->get_score(),
+                    "penalty" => $result->get_penalty(),
+                    "answernotes" => $cleanNotes,
+                    "trace" => $cleanTrace,
+                    "errors" => ""
+                ];
+            } catch (\Throwable $fbExc) {
+                $hasPrtErrors = true;
+                $scores[$index] = null;
+                $prts[$index] = "";
+                $prtresults[$index] = [
+                    "name" => $index,
+                    "has_errors" => true,
+                    "score" => null,
+                    "penalty" => null,
+                    "answernotes" => $cleanNotes,
+                    "trace" => $cleanTrace,
+                    "errors" => $fbExc->getMessage(),
+                ];
+            }
+        }
+
+        if (!$anyGradablePrt && !empty($question->prts)) {
+            echo json_encode([
+                "isgradable" => false,
+                "has_prt_errors" => false,
+                "has_cas_error" => false,
+                "score" => null,
+                "scores" => null,
+                "scoreweights" => null,
+                "specificfeedback" => null,
+                "prts" => null,
+                "prtresults" => null,
+                "gradingassets" => null,
+                "responsesummary" => null,
+                "iframes" => null
+            ]);
+            exit(0);
         }
 
         $weights = $question->get_parts_and_weights();
-        $scores['total'] = 0;
-        foreach ($weights as $prt => $weight) {
-            $prtscore = $weights[$prt] * $scores[$prt];
-            $scores['total'] += $prtscore;
+        if ($hasPrtErrors) {
+            $scores['total'] = null;
+        } else {
+            $scores['total'] = 0;
+            foreach ($weights as $prtKey => $weight) {
+                $prtscore = $weights[$prtKey] * ($scores[$prtKey] ?? 0);
+                $scores['total'] += $prtscore;
+            }
         }
         $weights['total'] = $question->defaultmark;
 
-        $specificfeedback = $translate->filter(
-            $question->specificfeedbackinstantiated->apply_placeholder_holder(
-                $question->specificfeedbackinstantiated->get_rendered($question->castextprocessor)
-            ),
-            $language
-        );
-        StackPlotReplacer::replace_plots($plots, $specificfeedback, "specificfeedback", $storeprefix);
+        $specificfeedback = "";
+        try {
+            if (isset($question->specificfeedbackinstantiated) && $question->specificfeedbackinstantiated) {
+                $specificfeedback = $translate->filter(
+                    $question->specificfeedbackinstantiated->apply_placeholder_holder(
+                        $question->specificfeedbackinstantiated->get_rendered($question->castextprocessor)
+                    ),
+                    $language
+                );
+                StackPlotReplacer::replace_plots($plots, $specificfeedback, "specificfeedback", $storeprefix);
+            }
+        } catch (\Throwable $sfExc) {
+            $hasPrtErrors = true;
+            $specificfeedback = "";
+        }
 
         echo json_encode([
             "isgradable" => true,
+            "has_prt_errors" => $hasPrtErrors,
+            "has_cas_error" => false,
             "score" => $scores['total'],
             "scores" => $scores,
             "scoreweights" => $weights,
@@ -419,10 +784,12 @@ function macstack_handle_grade(array $data) {
         exit(0);
 
     } catch (\Throwable $e) {
-        http_response_code(500);
         echo json_encode([
+            "isgradable" => false,
+            "has_prt_errors" => false,
+            "has_cas_error" => true,
             "error" => $e->getMessage(),
-            "isgradable" => false
+            "probed_errors" => macstack_probe_xml_cas_errors($xml, null, $seed ?? 1),
         ]);
         exit(0);
     }

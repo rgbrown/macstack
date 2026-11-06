@@ -210,6 +210,7 @@
         <div class="inspector-tabs">
           <button class="inspector-tab active" data-tab="tab-vars" id="tab-btn-vars">
             <i class="fa-solid fa-square-root-variable"></i> Variables
+            <span class="tab-badge" id="vars-badge" style="display: none;">!</span>
           </button>
           <button class="inspector-tab" data-tab="tab-prt" id="tab-btn-prt">
             <i class="fa-solid fa-diagram-project"></i> PRT Trace
@@ -230,6 +231,8 @@
           
           <!-- TAB 1: CAS VARIABLES -->
           <div class="tab-pane active" id="tab-vars">
+            <div id="vars-errors-container" class="cas-inspector-errors" style="display: none;"></div>
+
             <div class="pane-section-header">
               <span class="section-title">Evaluated Variables</span>
               <span class="section-meta" id="vars-count-label">0 variables</span>
@@ -254,11 +257,6 @@
             </div>
             <div class="question-note-card" id="inspector-question-note">
               <em>None</em>
-            </div>
-
-            <div id="vars-errors-container" class="error-banner mt-3" style="display: none;">
-              <div class="error-banner-header"><i class="fa-solid fa-triangle-exclamation"></i> Maxima Runtime Errors:</div>
-              <pre id="vars-errors-text"></pre>
             </div>
           </div>
 

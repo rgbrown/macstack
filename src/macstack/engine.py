@@ -32,6 +32,21 @@ def _ensure_deployed_seed_in_xml(question_xml: str, seed: int | None) -> str:
     return question_xml
 
 
+class StackEngineError(RuntimeError):
+    """Raised when the STACK PHP/Maxima engine returns an application or CAS error."""
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 500,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.payload = payload or {}
+
+
 class StackEngine:
     """Client for rendering, validating, grading, and inspecting STACK questions."""
 
@@ -39,6 +54,41 @@ class StackEngine:
         self.runtime_dir = runtime_dir or RUNTIME_DIR
         self.base_url = (base_url or ensure_php_server()).rstrip("/")
         self.client = httpx.Client(timeout=120.0)
+
+    def _request_json(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Execute an HTTP request to the local STACK engine and return parsed JSON.
+
+        Translates network, timeout, and HTTP error responses into structured StackEngineErrors.
+        """
+        url = f"{self.base_url}{path}"
+        try:
+            resp = self.client.request(method, url, **kwargs)
+        except httpx.TimeoutException:
+            raise StackEngineError("Maxima CAS evaluation timed out.", status_code=504)
+        except httpx.RequestError as exc:
+            raise StackEngineError(f"Failed to reach local STACK engine: {exc}", status_code=502)
+
+        if resp.status_code >= 400:
+            try:
+                body = resp.json()
+            except Exception:
+                body = {}
+
+            if isinstance(body, dict):
+                msg = body.get("message") or body.get("error") or body.get("errors") or resp.text.strip() or f"HTTP {resp.status_code}"
+            else:
+                msg = resp.text.strip() or f"HTTP {resp.status_code}"
+
+            raise StackEngineError(
+                str(msg),
+                status_code=resp.status_code,
+                payload=body if isinstance(body, dict) else {},
+            )
+
+        try:
+            return resp.json()
+        except Exception as exc:
+            raise StackEngineError(f"Invalid JSON response from STACK engine: {exc}", status_code=500)
 
     def render(
         self,
@@ -55,9 +105,7 @@ class StackEngine:
             "renderInputs": render_inputs,
             "readOnly": False,
         }
-        resp = self.client.post(f"{self.base_url}/render", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        data = self._request_json("POST", "/render", json=payload)
         if "inputs" not in data and "questioninputs" in data:
             data["inputs"] = data["questioninputs"]
         return data
@@ -77,9 +125,7 @@ class StackEngine:
             "answers": answers,
             "seed": seed,
         }
-        resp = self.client.post(f"{self.base_url}/validate", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request_json("POST", "/validate", json=payload)
 
     def grade(
         self,
@@ -94,16 +140,12 @@ class StackEngine:
             "answers": answers,
             "seed": seed,
         }
-        resp = self.client.post(f"{self.base_url}/grade", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request_json("POST", "/grade", json=payload)
 
     def run_tests(self, question_xml: str) -> dict[str, Any]:
         """Execute all authored unit tests (<qtest>) within the question definition."""
         payload = {"questionDefinition": question_xml}
-        resp = self.client.post(f"{self.base_url}/test", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request_json("POST", "/test", json=payload)
 
     def inspect_vars(self, question_xml: str, seed: int | None = None) -> dict[str, Any]:
         """Inspect all defined question variables, values, and teacher answers for a given seed."""
@@ -111,9 +153,7 @@ class StackEngine:
             "questionDefinition": question_xml,
             "seed": seed,
         }
-        resp = self.client.post(f"{self.base_url}/macstack/vars", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request_json("POST", "/macstack/vars", json=payload)
 
     def deploy_seeds(
         self,
@@ -129,9 +169,7 @@ class StackEngine:
             "max_attempts": max_attempts,
             "seeds": existing_seeds or [],
         }
-        resp = self.client.post(f"{self.base_url}/macstack/seeds", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        return self._request_json("POST", "/macstack/seeds", json=payload)
 
     def get_plot_bytes(self, filename: str) -> tuple[bytes, str]:
         """Retrieve the binary bytes and content type for a plot file."""
