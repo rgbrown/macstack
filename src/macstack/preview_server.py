@@ -48,6 +48,12 @@ def discover_stack_questions(root_dir: Path) -> list[dict[str, Any]]:
         if not xml_file.is_file():
             continue
         try:
+            rel = xml_file.relative_to(root_dir)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+        except ValueError:
+            pass
+        try:
             content = xml_file.read_text(encoding="utf-8", errors="ignore")
             if "<question" not in content or 'type="stack"' not in content:
                 continue
